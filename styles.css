@@ -1,0 +1,164 @@
+:root {
+  --bg: #f2efe8;
+  --panel: #fffdf8;
+  --ink: #1f2a33;
+  --accent: #375f4a;
+  --line: #d8d2c6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  color: var(--ink);
+  background: radial-gradient(circle at top left, #fff8ec 0%, var(--bg) 60%, #e9e2d3 100%);
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  padding: 1rem;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(130deg, #f8edd7, #fbf7ef);
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.app-header p {
+  margin: 0.35rem 0 0;
+  font-size: 0.92rem;
+}
+
+.viewer-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 12px;
+  padding: 12px;
+}
+
+.controls {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.9rem;
+  overflow: auto;
+}
+
+.controls h2,
+.controls h3 {
+  margin: 0 0 0.5rem;
+  color: var(--accent);
+}
+
+.controls h3 {
+  margin-top: 0.9rem;
+  font-size: 1rem;
+}
+
+.small {
+  margin: 0 0 0.6rem;
+  font-size: 0.8rem;
+  color: #4b5560;
+}
+
+.status {
+  margin: 0.6rem 0;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid #d3dfd2;
+  background: #f3faf3;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+label,
+select,
+button,
+input {
+  width: 100%;
+}
+
+select,
+button,
+input[type="file"] {
+  margin-top: 0.3rem;
+}
+
+button {
+  margin-top: 0.8rem;
+  padding: 0.6rem;
+  border: 1px solid #224d38;
+  border-radius: 7px;
+  background: #2f6a4d;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #25563f;
+}
+
+#bandList {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.84rem;
+}
+
+.canvases {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  min-height: 0;
+}
+
+.canvases article {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.8rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.canvases h2 {
+  margin: 0 0 0.6rem;
+  font-size: 1rem;
+  color: #2d3a44;
+}
+
+canvas {
+  width: 100%;
+  height: auto;
+  max-height: calc(100vh - 210px);
+  border: 1px solid #cfc8bb;
+  border-radius: 6px;
+  background: #f7f7f7;
+  image-rendering: pixelated;
+}
+
+@media (max-width: 980px) {
+  .viewer-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .canvases {
+    grid-template-columns: 1fr;
+  }
+
+  canvas {
+    max-height: 420px;
+  }
+}

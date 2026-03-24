@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Satellite Index Viewer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <h1>Satellite Image Index Viewer</h1>
+      <p>
+        Upload Landsat-style bands and compute vegetation/fire/water indices.
+      </p>
+    </header>
+    <main class="viewer-layout">
+      <section class="controls" aria-live="polite">
+        <h2>Inputs</h2>
+        <p class="small">
+          Upload one or more bands (`.tif/.tiff/.png/.jpg`). Landsat auto-detect supports B2/B3/B4/B5/B6.
+        </p>
+        <input id="bandFiles" type="file" multiple accept=".tif,.tiff,.png,.jpg,.jpeg" />
+        <p id="statusLine" class="status">Waiting for files...</p>
+
+        <h3>Bands</h3>
+        <ul id="bandList"></ul>
+
+        <h3>Manual Index Calculator</h3>
+        <label for="indexLabel">Index label</label>
+        <input id="indexLabel" type="text" value="Custom ND" />
+
+        <label for="formulaType">Formula</label>
+        <select id="formulaType">
+          <option value="nd">(A - B) / (A + B)</option>
+          <option value="ratio">A / B</option>
+          <option value="diff">A - B</option>
+        </select>
+
+        <label for="bandA">Band A</label>
+        <select id="bandA"></select>
+
+        <label for="bandB">Band B</label>
+        <select id="bandB"></select>
+
+        <button id="computeBtn" type="button">Calculate Index</button>
+      </section>
+
+      <section class="canvases">
+        <article>
+          <h2>Preview Composite</h2>
+          <canvas id="previewCanvas" width="512" height="512"></canvas>
+        </article>
+        <article>
+          <h2>Index Map</h2>
+          <canvas id="indexCanvas" width="512" height="512"></canvas>
+        </article>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
