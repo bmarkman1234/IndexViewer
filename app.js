@@ -15,19 +15,6 @@ const bandStore = new Map();
 let workingWidth = 0;
 let workingHeight = 0;
 
-const bandAliases = {
-  B2: "BLUE",
-  B3: "GREEN",
-  B4: "RED",
-  B5: "NIR",
-  B6: "SWIR1",
-  BLUE: "BLUE",
-  GREEN: "GREEN",
-  RED: "RED",
-  NIR: "NIR",
-  SWIR1: "SWIR1"
-};
-
 const rasterFns = {
   abs: Math.abs,
   sqrt: Math.sqrt,
@@ -50,29 +37,11 @@ function setStatus(text) {
   statusLine.textContent = text;
 }
 
-function stemToBandName(filename) {
-  const stem = filename.replace(/\.[^.]+$/, "");
-  const sanitized = stem.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-  return sanitized || "BAND";
-}
-
 function uniqueBandName(baseName) {
   if (!bandStore.has(baseName)) return baseName;
   let suffix = 2;
-  while (bandStore.has(`${baseName}_${suffix}`)) suffix += 1;
-  return `${baseName}_${suffix}`;
-}
-
-function detectBandName(filename) {
-  const upper = filename.toUpperCase();
-  const match = upper.match(/(?:^|[_\-.])B([2-6])(?:[_\-.]|$)/);
-  if (match) return `B${match[1]}`;
-  if (upper.includes("NIR")) return "NIR";
-  if (upper.includes("SWIR1")) return "SWIR1";
-  if (upper.includes("RED")) return "RED";
-  if (upper.includes("GREEN")) return "GREEN";
-  if (upper.includes("BLUE")) return "BLUE";
-  return null;
+  while (bandStore.has(`${baseName} [${suffix}]`)) suffix += 1;
+  return `${baseName} [${suffix}]`;
 }
 
 function normalizeReflectance(values) {
@@ -127,7 +96,7 @@ function resampleNearest(values, srcW, srcH, dstW, dstH) {
   return out;
 }
 
-async function readGeoTiffBands(file, detectedBand) {
+async function readGeoTiffBands(file) {
   const buffer = await file.arrayBuffer();
   const tiff = await GeoTIFF.fromArrayBuffer(buffer);
   const image = await tiff.getImage();
@@ -138,11 +107,9 @@ async function readGeoTiffBands(file, detectedBand) {
   const rasters = await image.readRasters({ samples: sampleIndexes });
 
   if (samples === 1) {
-    const detectedAlias = detectedBand ? bandAliases[detectedBand] : null;
-    const baseName = detectedAlias || stemToBandName(file.name);
     return [
       {
-        name: baseName,
+        name: file.name,
         payload: {
           values: normalizeReflectance(Float32Array.from(rasters[0])),
           width,
@@ -152,11 +119,9 @@ async function readGeoTiffBands(file, detectedBand) {
     ];
   }
 
-  const defaultBandOrder = ["BLUE", "GREEN", "RED", "NIR", "SWIR1", "SWIR2"];
   return rasters.map((sample, idx) => {
-    const defaultName = defaultBandOrder[idx] || `BAND_${idx + 1}`;
     return {
-      name: defaultName,
+      name: `${file.name} [Band ${idx + 1}]`,
       payload: {
         values: normalizeReflectance(Float32Array.from(sample)),
         width,
@@ -203,14 +168,16 @@ function renderFormulaHint() {
     formulaHint.textContent = "Upload bands to enable raster algebra.";
     return;
   }
-  formulaHint.textContent = `Available bands: ${names.join(", ")}. Helpers: ${Object.keys(rasterFns).join(", ")}. Constants: ${Object.keys(rasterConsts).join(", ")}.`;
+  const refs = names.map((name) => `[${name}]`).join(", ");
+  formulaHint.textContent = `Band references: ${refs}. Helpers: ${Object.keys(rasterFns).join(", ")}. Constants: ${Object.keys(rasterConsts).join(", ")}.`;
 }
 
 function renderPreview() {
   const red = bandStore.get("RED");
   const green = bandStore.get("GREEN");
   const blue = bandStore.get("BLUE");
-  const fallback = bandStore.get("NIR") || red || green || blue || bandStore.get("SWIR1");
+  const firstBand = bandStore.values().next().value;
+  const fallback = red || green || blue || firstBand;
   if (!fallback) return;
 
   const w = workingWidth;
@@ -245,31 +212,54 @@ function colorizeNormalized(t) {
 
 function compileRasterFormula(rawFormula) {
   const normalized = rawFormula.replace(/\^/g, "**");
-  if (!/^[A-Za-z0-9_+\-*/().,\s^]+$/.test(rawFormula)) {
+  if (!/^[A-Za-z0-9_+\-*/().,\s^[\]]+$/.test(rawFormula)) {
     throw new Error("Formula contains unsupported characters.");
   }
 
-  const bandNames = [...bandStore.keys()];
+  const refs = new Map();
+  let refIndex = 0;
+  const transformed = normalized.replace(/\[([^\]]+)\]/g, (_, label) => {
+    const bandName = label.trim();
+    if (!bandStore.has(bandName)) {
+      throw new Error(`Unknown band "${bandName}". Use names shown in the band list.`);
+    }
+    if (!refs.has(bandName)) {
+      refs.set(bandName, `B${refIndex}`);
+      refIndex += 1;
+    }
+    return refs.get(bandName);
+  });
+
+  if (transformed.includes("[") || transformed.includes("]")) {
+    throw new Error("Malformed band reference. Use [exact band name].");
+  }
+
+  const bandRefs = [...refs.entries()].map(([name, symbol]) => ({ name, symbol }));
+  if (bandRefs.length === 0) {
+    throw new Error("Reference at least one band using [band name].");
+  }
+
+  const bandSymbols = bandRefs.map((entry) => entry.symbol);
   const helperNames = Object.keys(rasterFns);
   const constNames = Object.keys(rasterConsts);
-  const allowed = new Set([...bandNames, ...helperNames, ...constNames]);
-  const identifiers = normalized.match(/[A-Za-z_][A-Za-z0-9_]*/g) || [];
+  const allowed = new Set([...bandSymbols, ...helperNames, ...constNames]);
+  const identifiers = transformed.match(/[A-Za-z_][A-Za-z0-9_]*/g) || [];
 
   for (const id of identifiers) {
     if (!allowed.has(id)) {
-      throw new Error(`Unknown token "${id}". Use uploaded band names only.`);
+      throw new Error(`Unknown token "${id}". Use [band name] references and supported helpers.`);
     }
   }
 
   const evaluator = new Function(
-    ...bandNames,
+    ...bandSymbols,
     ...helperNames,
     ...constNames,
-    `"use strict"; return (${normalized});`
+    `"use strict"; return (${transformed});`
   );
 
   return {
-    bandNames,
+    bandRefs,
     helperNames,
     constNames,
     evaluator
@@ -297,8 +287,8 @@ function computeIndex() {
     return;
   }
 
-  const { bandNames, helperNames, constNames, evaluator } = compiled;
-  const bandArrays = bandNames.map((name) => bandStore.get(name).values);
+  const { bandRefs, helperNames, constNames, evaluator } = compiled;
+  const bandArrays = bandRefs.map((entry) => bandStore.get(entry.name).values);
   const helperFns = helperNames.map((name) => rasterFns[name]);
   const constValues = constNames.map((name) => rasterConsts[name]);
   const out = new Float32Array(workingWidth * workingHeight);
@@ -339,22 +329,18 @@ function computeIndex() {
 }
 
 async function ingestFile(file) {
-  const detected = detectBandName(file.name);
-
   const lower = file.name.toLowerCase();
   const isTiff = lower.endsWith(".tif") || lower.endsWith(".tiff");
   if (isTiff) {
-    const entries = await readGeoTiffBands(file, detected);
+    const entries = await readGeoTiffBands(file);
     entries.forEach((entry) => {
-      const logicalBand = bandAliases[entry.name] || entry.name;
-      bandStore.set(uniqueBandName(logicalBand), entry.payload);
+      bandStore.set(uniqueBandName(entry.name), entry.payload);
     });
     return;
   }
 
   const payload = await readImageBand(file);
-  const logicalBand = detected ? bandAliases[detected] : stemToBandName(file.name);
-  bandStore.set(uniqueBandName(logicalBand), payload);
+  bandStore.set(uniqueBandName(file.name), payload);
 }
 
 async function handleFiles(files) {

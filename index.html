@@ -30,10 +30,10 @@
         <input id="indexLabel" type="text" value="Custom ND" />
 
         <label for="formulaInput">Raster algebra formula</label>
-        <input id="formulaInput" type="text" value="(NIR - RED) / (NIR + RED)" />
+        <input id="formulaInput" type="text" value="([Band A] - [Band B]) / ([Band A] + [Band B])" />
         <p id="formulaHint" class="small">
-          Use uploaded band names (example: `(NIR - RED) / (NIR + RED)`). Supported helpers:
-          `abs, sqrt, pow, min, max, log, exp, sin, cos, tan` and constants `PI, E`.
+          Use exact uploaded names in brackets (example: `([my_band_1.tif] - [my_band_2.tif]) / ([my_band_1.tif] + [my_band_2.tif])`).
+          Supported helpers: `abs, sqrt, pow, min, max, log, exp, sin, cos, tan` and constants `PI, E`.
         </p>
 
         <button id="computeBtn" type="button">Calculate Index</button>
