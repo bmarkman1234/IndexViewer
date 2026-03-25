@@ -4,6 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Satellite Index Viewer</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -14,30 +20,47 @@
       </p>
     </header>
     <main class="viewer-layout">
-      <section class="controls" aria-live="polite">
-        <h2>Inputs</h2>
-        <p class="small">
-          Upload one or more bands (`.tif/.tiff/.png/.jpg`). Landsat auto-detect supports B2/B3/B4/B5/B6.
-        </p>
-        <input id="bandFiles" type="file" multiple accept=".tif,.tiff,.png,.jpg,.jpeg" />
-        <p id="statusLine" class="status">Waiting for files...</p>
+      <div class="left-column">
+        <section class="controls" aria-live="polite">
+          <h2>Inputs</h2>
+          <p class="small">
+            Upload one or more raster bands (`.tif/.tiff/.png/.jpg`), then assign a clear alias to each band.
+          </p>
+          <input id="bandFiles" type="file" multiple accept=".tif,.tiff,.png,.jpg,.jpeg" />
+          <p id="statusLine" class="status">Waiting for files...</p>
 
-        <h3>Bands</h3>
-        <ul id="bandList"></ul>
+          <h3>Bands</h3>
+          <ul id="bandList"></ul>
+          <div id="bandAliasList" class="alias-list"></div>
 
-        <h3>Manual Index Calculator</h3>
-        <label for="indexLabel">Index label</label>
-        <input id="indexLabel" type="text" value="Custom ND" />
+          <h3>Manual Index Calculator</h3>
+          <label for="indexLabel">Index label</label>
+          <input id="indexLabel" type="text" value="Custom ND" />
 
-        <label for="formulaInput">Raster algebra formula</label>
-        <input id="formulaInput" type="text" value="([Band A] - [Band B]) / ([Band A] + [Band B])" />
-        <p id="formulaHint" class="small">
-          Use exact uploaded names in brackets (example: `([my_band_1.tif] - [my_band_2.tif]) / ([my_band_1.tif] + [my_band_2.tif])`).
-          Supported helpers: `abs, sqrt, pow, min, max, log, exp, sin, cos, tan` and constants `PI, E`.
-        </p>
+          <label for="formulaInput">Raster algebra formula</label>
+          <input id="formulaInput" type="text" value="({Band A} - {Band B}) / ({Band A} + {Band B})" />
+          <p id="formulaHint" class="small">
+            Rename each uploaded band with an alias, then use alias names in formulas.
+            Use `{alias}` for aliases or `[raw file name]` for direct references.
+          </p>
 
-        <button id="computeBtn" type="button">Calculate Index</button>
-      </section>
+          <button id="computeBtn" type="button">Calculate Index</button>
+
+          <h3>Time Series</h3>
+          <label for="timeLabel">Time label</label>
+          <input id="timeLabel" type="text" placeholder="2026-03-25 Scene A" />
+          <p class="small">Each calculation is saved as a snapshot you can revisit on the map.</p>
+          <label for="snapshotSelect">Saved snapshots</label>
+          <select id="snapshotSelect"></select>
+          <button id="showSnapshotBtn" type="button">Show Selected Snapshot</button>
+        </section>
+
+        <section class="instructions">
+          <h2>Instructions</h2>
+          <p class="small">Use this reference to find standard remote sensing indices and formulas:</p>
+          <p class="small"><a href="https://www.indexdatabase.de/" target="_blank" rel="noopener noreferrer">https://www.indexdatabase.de/</a></p>
+        </section>
+      </div>
 
       <section class="canvases">
         <article>
@@ -45,13 +68,44 @@
           <canvas id="previewCanvas" width="512" height="512"></canvas>
         </article>
         <article>
-          <h2>Index Map</h2>
+          <div class="panel-head">
+            <h2>Index Map</h2>
+            <button id="exportIndexBtn" type="button" class="icon-btn" title="Export index image">Export</button>
+          </div>
           <canvas id="indexCanvas" width="512" height="512"></canvas>
+        </article>
+        <article>
+          <h2>Interactive Map Overlay</h2>
+          <div class="map-controls">
+            <label for="overlayOpacity">Overlay opacity: <span id="overlayOpacityValue">70%</span></label>
+            <input id="overlayOpacity" type="range" min="0" max="100" value="70" step="1" />
+            <label for="compareBlend">Change slider: <span id="compareBlendValue">50%</span></label>
+            <input id="compareBlend" type="range" min="0" max="100" step="1" value="50" />
+          </div>
+          <div id="mapContainer" class="map-container" aria-label="Map with index overlay"></div>
+        </article>
+        <article aria-live="polite">
+          <div class="panel-head">
+            <h2>Pixel Probe</h2>
+            <button id="exportProbeCsvBtn" type="button" class="icon-btn" title="Export pixel probe CSV">CSV</button>
+          </div>
+          <div class="pixel-panel">
+            <p id="pixelCoords" class="small">Click the map to inspect a pixel.</p>
+            <p id="pixelCurrent" class="small">Current snapshot value: -</p>
+            <p id="pixelPrevious" class="small">Previous snapshot value: -</p>
+            <canvas id="pixelTrendCanvas" width="360" height="180"></canvas>
+          </div>
         </article>
       </section>
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/proj4@2.11.0/dist/proj4.js"></script>
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
     <script src="./app.js"></script>
   </body>
 </html>

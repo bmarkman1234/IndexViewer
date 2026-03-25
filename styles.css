@@ -49,12 +49,31 @@ body {
   padding: 12px;
 }
 
+.left-column {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
 .controls {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 0.9rem;
   overflow: auto;
+}
+
+.instructions {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.9rem;
+}
+
+.instructions h2 {
+  margin: 0 0 0.5rem;
+  color: var(--accent);
 }
 
 .controls h2,
@@ -117,6 +136,26 @@ button:hover {
   font-size: 0.84rem;
 }
 
+.alias-list {
+  margin-top: 0.5rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.alias-row {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.45rem;
+  background: #fff;
+}
+
+.alias-row small {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: #4b5560;
+  word-break: break-word;
+}
+
 .canvases {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -139,6 +178,71 @@ button:hover {
   color: #2d3a44;
 }
 
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.panel-head h2 {
+  margin: 0 0 0.6rem;
+}
+
+.icon-btn {
+  width: auto;
+  margin-top: 0;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.75rem;
+  border-radius: 6px;
+}
+
+.map-controls {
+  margin-bottom: 0.6rem;
+}
+
+.map-controls label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
+  color: #33414c;
+}
+
+.map-container {
+  width: 100%;
+  min-height: 420px;
+  height: calc(100vh - 260px);
+  border: 1px solid #cfc8bb;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #eef2f5;
+}
+
+.pixel-panel {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  padding: 0.6rem;
+}
+
+.pixel-panel h3 {
+  margin: 0 0 0.45rem;
+  font-size: 0.95rem;
+  color: #2d3a44;
+}
+
+.pixel-panel {
+  height: 100%;
+}
+
+#pixelTrendCanvas {
+  width: 100%;
+  height: auto;
+  border: 1px solid #d8d2c6;
+  border-radius: 4px;
+  background: #fbfbfb;
+}
+
 canvas {
   width: 100%;
   height: auto;
@@ -154,6 +258,10 @@ canvas {
     grid-template-columns: 1fr;
   }
 
+  .left-column {
+    grid-template-rows: auto auto;
+  }
+
   .canvases {
     grid-template-columns: 1fr;
   }
@@ -161,4 +269,10 @@ canvas {
   canvas {
     max-height: 420px;
   }
+
+  .map-container {
+    height: 420px;
+    min-height: 420px;
+  }
+
 }
