@@ -2,9 +2,8 @@ const fileInput = document.getElementById("bandFiles");
 const statusLine = document.getElementById("statusLine");
 const bandList = document.getElementById("bandList");
 const indexLabel = document.getElementById("indexLabel");
-const formulaType = document.getElementById("formulaType");
-const bandA = document.getElementById("bandA");
-const bandB = document.getElementById("bandB");
+const formulaInput = document.getElementById("formulaInput");
+const formulaHint = document.getElementById("formulaHint");
 const computeBtn = document.getElementById("computeBtn");
 
 const previewCanvas = document.getElementById("previewCanvas");
@@ -29,8 +28,39 @@ const bandAliases = {
   SWIR1: "SWIR1"
 };
 
+const rasterFns = {
+  abs: Math.abs,
+  sqrt: Math.sqrt,
+  pow: Math.pow,
+  min: Math.min,
+  max: Math.max,
+  log: Math.log,
+  exp: Math.exp,
+  sin: Math.sin,
+  cos: Math.cos,
+  tan: Math.tan
+};
+
+const rasterConsts = {
+  PI: Math.PI,
+  E: Math.E
+};
+
 function setStatus(text) {
   statusLine.textContent = text;
+}
+
+function stemToBandName(filename) {
+  const stem = filename.replace(/\.[^.]+$/, "");
+  const sanitized = stem.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return sanitized || "BAND";
+}
+
+function uniqueBandName(baseName) {
+  if (!bandStore.has(baseName)) return baseName;
+  let suffix = 2;
+  while (bandStore.has(`${baseName}_${suffix}`)) suffix += 1;
+  return `${baseName}_${suffix}`;
 }
 
 function detectBandName(filename) {
@@ -97,13 +127,43 @@ function resampleNearest(values, srcW, srcH, dstW, dstH) {
   return out;
 }
 
-async function readGeoTiffBand(file) {
+async function readGeoTiffBands(file, detectedBand) {
   const buffer = await file.arrayBuffer();
   const tiff = await GeoTIFF.fromArrayBuffer(buffer);
   const image = await tiff.getImage();
-  const rasters = await image.readRasters({ interleave: true });
-  const raw = normalizeReflectance(Float32Array.from(rasters));
-  return { values: raw, width: image.getWidth(), height: image.getHeight() };
+  const width = image.getWidth();
+  const height = image.getHeight();
+  const samples = image.getSamplesPerPixel();
+  const sampleIndexes = Array.from({ length: samples }, (_, i) => i);
+  const rasters = await image.readRasters({ samples: sampleIndexes });
+
+  if (samples === 1) {
+    const detectedAlias = detectedBand ? bandAliases[detectedBand] : null;
+    const baseName = detectedAlias || stemToBandName(file.name);
+    return [
+      {
+        name: baseName,
+        payload: {
+          values: normalizeReflectance(Float32Array.from(rasters[0])),
+          width,
+          height
+        }
+      }
+    ];
+  }
+
+  const defaultBandOrder = ["BLUE", "GREEN", "RED", "NIR", "SWIR1", "SWIR2"];
+  return rasters.map((sample, idx) => {
+    const defaultName = defaultBandOrder[idx] || `BAND_${idx + 1}`;
+    return {
+      name: defaultName,
+      payload: {
+        values: normalizeReflectance(Float32Array.from(sample)),
+        width,
+        height
+      }
+    };
+  });
 }
 
 async function readImageBand(file) {
@@ -137,25 +197,13 @@ function renderBandList() {
   });
 }
 
-function renderBandSelectors() {
-  const options = [...bandStore.keys()];
-  bandA.innerHTML = "";
-  bandB.innerHTML = "";
-  options.forEach((name) => {
-    const o1 = document.createElement("option");
-    o1.value = name;
-    o1.textContent = name;
-    bandA.appendChild(o1);
-
-    const o2 = document.createElement("option");
-    o2.value = name;
-    o2.textContent = name;
-    bandB.appendChild(o2);
-  });
-
-  if (options.includes("NIR")) bandA.value = "NIR";
-  if (options.includes("RED")) bandB.value = "RED";
-  if (bandB.value === bandA.value && options.length > 1) bandB.value = options[1];
+function renderFormulaHint() {
+  const names = [...bandStore.keys()];
+  if (names.length === 0) {
+    formulaHint.textContent = "Upload bands to enable raster algebra.";
+    return;
+  }
+  formulaHint.textContent = `Available bands: ${names.join(", ")}. Helpers: ${Object.keys(rasterFns).join(", ")}. Constants: ${Object.keys(rasterConsts).join(", ")}.`;
 }
 
 function renderPreview() {
@@ -187,55 +235,98 @@ function renderPreview() {
   previewCtx.putImageData(img, 0, 0);
 }
 
-function colorizeIndex(value) {
-  const v = Math.max(-1, Math.min(1, value));
-  if (v < -0.2) return [41, 98, 255];
-  if (v < 0.1) return [120, 181, 255];
-  if (v < 0.3) return [245, 222, 136];
-  if (v < 0.55) return [155, 205, 75];
-  return [33, 138, 68];
+function colorizeNormalized(t) {
+  const x = Math.max(0, Math.min(1, t));
+  if (x < 0.25) return [40, 88, 180];
+  if (x < 0.5) return [117, 176, 230];
+  if (x < 0.75) return [239, 214, 132];
+  return [38, 128, 66];
 }
 
-function requireBands(required) {
-  const missing = required.filter((b) => !bandStore.has(b));
-  return missing;
+function compileRasterFormula(rawFormula) {
+  const normalized = rawFormula.replace(/\^/g, "**");
+  if (!/^[A-Za-z0-9_+\-*/().,\s^]+$/.test(rawFormula)) {
+    throw new Error("Formula contains unsupported characters.");
+  }
+
+  const bandNames = [...bandStore.keys()];
+  const helperNames = Object.keys(rasterFns);
+  const constNames = Object.keys(rasterConsts);
+  const allowed = new Set([...bandNames, ...helperNames, ...constNames]);
+  const identifiers = normalized.match(/[A-Za-z_][A-Za-z0-9_]*/g) || [];
+
+  for (const id of identifiers) {
+    if (!allowed.has(id)) {
+      throw new Error(`Unknown token "${id}". Use uploaded band names only.`);
+    }
+  }
+
+  const evaluator = new Function(
+    ...bandNames,
+    ...helperNames,
+    ...constNames,
+    `"use strict"; return (${normalized});`
+  );
+
+  return {
+    bandNames,
+    helperNames,
+    constNames,
+    evaluator
+  };
 }
 
 function computeIndex() {
   const label = indexLabel.value.trim() || "Custom Index";
-  const formula = formulaType.value;
-  const req = [bandA.value, bandB.value];
-  const missing = requireBands(req.filter(Boolean));
-  if (missing.length > 0) {
-    setStatus(`Cannot compute. Missing: ${missing.join(", ")}`);
-    return;
-  }
-  if (!req[0] || !req[1]) {
-    setStatus("Choose both Band A and Band B.");
+  const formula = formulaInput.value.trim();
+  if (!formula) {
+    setStatus("Enter a raster algebra formula.");
     return;
   }
 
-  const a = bandStore.get(req[0]).values;
-  const b = bandStore.get(req[1]).values;
-  const out = new Float32Array(a.length);
+  if (bandStore.size === 0) {
+    setStatus("Upload at least one band first.");
+    return;
+  }
 
-  for (let i = 0; i < a.length; i += 1) {
-    const x = a[i];
-    const y = b[i];
-    const den = x + y;
+  let compiled;
+  try {
+    compiled = compileRasterFormula(formula);
+  } catch (err) {
+    setStatus(err.message);
+    return;
+  }
+
+  const { bandNames, helperNames, constNames, evaluator } = compiled;
+  const bandArrays = bandNames.map((name) => bandStore.get(name).values);
+  const helperFns = helperNames.map((name) => rasterFns[name]);
+  const constValues = constNames.map((name) => rasterConsts[name]);
+  const out = new Float32Array(workingWidth * workingHeight);
+  let min = Infinity;
+  let max = -Infinity;
+
+  for (let i = 0; i < out.length; i += 1) {
+    const bandValues = bandArrays.map((arr) => arr[i]);
     let value = 0;
-
-    if (formula === "ratio") value = y === 0 ? 0 : x / y;
-    else if (formula === "diff") value = x - y;
-    else value = den === 0 ? 0 : (x - y) / den;
-    out[i] = Number.isFinite(value) ? value : 0;
+    try {
+      value = evaluator(...bandValues, ...helperFns, ...constValues);
+    } catch (err) {
+      setStatus(`Formula evaluation failed near pixel ${i}: ${err.message}`);
+      return;
+    }
+    const safeValue = Number.isFinite(value) ? value : 0;
+    out[i] = safeValue;
+    if (safeValue < min) min = safeValue;
+    if (safeValue > max) max = safeValue;
   }
 
   indexCanvas.width = workingWidth;
   indexCanvas.height = workingHeight;
   const img = indexCtx.createImageData(workingWidth, workingHeight);
+  const span = max - min || 1;
   for (let i = 0, p = 0; i < out.length; i += 1, p += 4) {
-    const [r, g, bColor] = colorizeIndex(out[i]);
+    const t = (out[i] - min) / span;
+    const [r, g, bColor] = colorizeNormalized(t);
     img.data[p] = r;
     img.data[p + 1] = g;
     img.data[p + 2] = bColor;
@@ -243,20 +334,27 @@ function computeIndex() {
   }
   indexCtx.putImageData(img, 0, 0);
   setStatus(
-    `${label} computed on ${workingWidth} x ${workingHeight} using ${formula.toUpperCase()} with A=${req[0]}, B=${req[1]}.`
+    `${label} computed on ${workingWidth} x ${workingHeight} using "${formula}". Range: ${min.toFixed(4)} to ${max.toFixed(4)}.`
   );
 }
 
 async function ingestFile(file) {
   const detected = detectBandName(file.name);
-  if (!detected) return;
-  const logicalBand = bandAliases[detected];
-  if (!logicalBand) return;
 
   const lower = file.name.toLowerCase();
   const isTiff = lower.endsWith(".tif") || lower.endsWith(".tiff");
-  const payload = isTiff ? await readGeoTiffBand(file) : await readImageBand(file);
-  bandStore.set(logicalBand, payload);
+  if (isTiff) {
+    const entries = await readGeoTiffBands(file, detected);
+    entries.forEach((entry) => {
+      const logicalBand = bandAliases[entry.name] || entry.name;
+      bandStore.set(uniqueBandName(logicalBand), entry.payload);
+    });
+    return;
+  }
+
+  const payload = await readImageBand(file);
+  const logicalBand = detected ? bandAliases[detected] : stemToBandName(file.name);
+  bandStore.set(uniqueBandName(logicalBand), payload);
 }
 
 async function handleFiles(files) {
@@ -274,8 +372,9 @@ async function handleFiles(files) {
   }
 
   if (bandStore.size === 0) {
-    setStatus("No supported band names found. Include names like B4, B5, B6.");
+    setStatus("No readable raster bands were found in the selected files.");
     renderBandList();
+    renderFormulaHint();
     return;
   }
 
@@ -289,10 +388,10 @@ async function handleFiles(files) {
   });
 
   renderBandList();
-  renderBandSelectors();
+  renderFormulaHint();
   renderPreview();
   indexCtx.clearRect(0, 0, indexCanvas.width, indexCanvas.height);
-  setStatus(`Loaded ${bandStore.size} bands. Ready to compute index.`);
+  setStatus(`Loaded ${bandStore.size} bands (each TIFF sample is handled as a separate band). Ready for raster algebra.`);
 }
 
 fileInput.addEventListener("change", (e) => {
