@@ -499,6 +499,10 @@ button:hover {
   height: 100%;
 }
 
+.hidden-canvases {
+  display: none;
+}
+
 #pixelTrendCanvas {
   width: 100%;
   height: auto;

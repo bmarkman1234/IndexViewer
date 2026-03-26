@@ -112,10 +112,28 @@ function updateWorkflowProgress() {
 }
 
 function startNewIndexCycle() {
+  bandStore.clear();
+  aliasStore.clear();
+  aliasConfirmedStore.clear();
+  workingWidth = 0;
+  workingHeight = 0;
+  workingGeoBounds = null;
+  if (fileInput) fileInput.value = "";
+  renderBandList();
+  renderAliasEditor();
+  renderFormulaHint();
+  previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+  indexCtx.clearRect(0, 0, indexCanvas.width, indexCanvas.height);
+  if (map && mapBaseOverlay) {
+    map.removeLayer(mapBaseOverlay);
+    mapBaseOverlay = null;
+  }
+  clearComparisonOverlay();
+
   newIndexCyclePending = true;
   updateWorkflowProgress();
   if (indexLabel) indexLabel.focus();
-  setStatus("New index cycle started. Adjust index label/formula and calculate. Saved indices remain in the compare list.");
+  setStatus("Reset to Step 1. Upload bands to start a new index calculation. Saved indices remain in Step 4.");
 }
 
 function initMap() {
