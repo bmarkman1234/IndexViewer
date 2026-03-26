@@ -1116,7 +1116,7 @@ if (overlayOpacityInput) {
   overlayOpacityInput.addEventListener("change", setOverlayOpacityFromInput);
 }
 if (compareBlendInput) {
-  compareBlendInput.addEventListener("change", setCompareBlendFromInput);
+  compareBlendInput.addEventListener("input", setCompareBlendFromInput);
 }
 if (showSnapshotBtn) {
   showSnapshotBtn.addEventListener("click", async () => {
