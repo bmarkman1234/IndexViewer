@@ -395,14 +395,13 @@ function exportPixelProbeCsv() {
   }
 
   const rows = [
-    ["snapshot_id", "index_label", "lat", "lon", "pixel_x", "pixel_y", "pixel_value", "status"].join(",")
+    ["index_label", "lat", "lon", "pixel_x", "pixel_y", "pixel_value", "status"].join(",")
   ];
   snapshotStore.forEach((snap) => {
     const sample = sampleSnapshotAtLatLon(snap, probeLatLng.lat, probeLatLng.lon);
     if (!sample) {
       rows.push(
         [
-          snap.id,
           `"${snap.indexLabel.replace(/"/g, '""')}"`,
           probeLatLng.lat.toFixed(6),
           probeLatLng.lon.toFixed(6),
@@ -416,7 +415,6 @@ function exportPixelProbeCsv() {
     }
     rows.push(
       [
-        snap.id,
         `"${snap.indexLabel.replace(/"/g, '""')}"`,
         probeLatLng.lat.toFixed(6),
         probeLatLng.lon.toFixed(6),
