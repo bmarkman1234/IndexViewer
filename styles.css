@@ -51,9 +51,7 @@ body {
 
 .left-column {
   min-height: 0;
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  gap: 12px;
+  display: block;
 }
 
 .controls {
@@ -62,18 +60,6 @@ body {
   border-radius: 10px;
   padding: 0.9rem;
   overflow: auto;
-}
-
-.instructions {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 0.9rem;
-}
-
-.instructions h2 {
-  margin: 0 0 0.5rem;
-  color: var(--accent);
 }
 
 .controls h2,
@@ -85,6 +71,27 @@ body {
 .controls h3 {
   margin-top: 0.9rem;
   font-size: 1rem;
+}
+
+.workflow-step {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 0.7rem;
+  margin-bottom: 0.7rem;
+}
+
+.step-kicker {
+  margin: 0 0 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #596a58;
+}
+
+.workflow-step h3 {
+  margin-top: 0;
 }
 
 .small {
@@ -130,10 +137,52 @@ button:hover {
   background: #25563f;
 }
 
+.secondary-btn {
+  background: #e8f0ea;
+  color: #244536;
+  border: 1px solid #8aa89a;
+}
+
+.secondary-btn:hover {
+  background: #d9e7de;
+}
+
+.formula-help {
+  margin-top: 0.55rem;
+  border: 1px solid #d8d2c6;
+  border-radius: 6px;
+  background: #faf9f5;
+  padding: 0.45rem 0.55rem;
+}
+
+.formula-help summary {
+  cursor: pointer;
+  font-size: 0.83rem;
+  color: #34454f;
+  font-weight: 600;
+}
+
+.formula-help[open] {
+  background: #fff;
+}
+
+.formula-help .small {
+  margin-top: 0.5rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+}
+
 #bandList {
   margin: 0;
   padding-left: 1.1rem;
   font-size: 0.84rem;
+}
+
+#bandList li {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.3;
 }
 
 .alias-list {
@@ -197,12 +246,6 @@ button:hover {
   border-radius: 6px;
 }
 
-.export-controls {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
 .map-controls {
   margin-bottom: 0.6rem;
 }
@@ -229,6 +272,14 @@ button:hover {
   border-radius: 6px;
   background: #fff;
   padding: 0.6rem;
+}
+
+.pixel-values-list {
+  margin-bottom: 0.45rem;
+}
+
+.pixel-values-list .small {
+  margin-bottom: 0.35rem;
 }
 
 .pixel-panel h3 {
@@ -265,7 +316,7 @@ canvas {
   }
 
   .left-column {
-    grid-template-rows: auto auto;
+    display: block;
   }
 
   .canvases {

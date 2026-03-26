@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Satellite Index Viewer</title>
+    <title>IndexViewer</title>
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -14,52 +14,66 @@
   </head>
   <body>
     <header class="app-header">
-      <h1>Satellite Image Index Viewer</h1>
+      <h1>IndexViewer</h1>
       <p>
-        Upload Landsat-style bands and compute vegetation/fire/water indices.
+        A lightweight web app for calculating and visualizing indices from airborne and spaceborne imagery
       </p>
     </header>
     <main class="viewer-layout">
       <div class="left-column">
         <section class="controls" aria-live="polite">
-          <h2>Inputs</h2>
-          <p class="small">
-            Upload one or more raster bands (`.tif/.tiff/.png/.jpg`), then assign a clear alias to each band.
-          </p>
-          <input id="bandFiles" type="file" multiple accept=".tif,.tiff,.png,.jpg,.jpeg" />
-          <p id="statusLine" class="status">Waiting for files...</p>
+          <h2>Workflow</h2>
 
-          <h3>Bands</h3>
-          <ul id="bandList"></ul>
-          <div id="bandAliasList" class="alias-list"></div>
+          <div class="workflow-step">
+            <p class="step-kicker">Step 1</p>
+            <h3>Upload Bands</h3>
+            <p class="small">
+              Upload one or more raster bands (`.tif/.tiff/.png/.jpg`), then assign a clear alias to each band.
+            </p>
+            <input id="bandFiles" type="file" multiple accept=".tif,.tiff,.png,.jpg,.jpeg" />
+            <p id="statusLine" class="status">Waiting for files...</p>
+          </div>
 
-          <h3>Manual Index Calculator</h3>
-          <label for="indexLabel">Index label</label>
-          <input id="indexLabel" type="text" value="Custom ND" />
+          <div class="workflow-step">
+            <p class="step-kicker">Step 2</p>
+            <h3>Review Bands</h3>
+            <ul id="bandList"></ul>
+            <div id="bandAliasList" class="alias-list"></div>
+          </div>
 
-          <label for="formulaInput">Raster algebra formula</label>
-          <input id="formulaInput" type="text" value="({Band A} - {Band B}) / ({Band A} + {Band B})" />
-          <p id="formulaHint" class="small">
-            Rename each uploaded band with an alias, then use alias names in formulas.
-            Use `{alias}` for aliases or `[raw file name]` for direct references.
-          </p>
+          <div class="workflow-step">
+            <p class="step-kicker">Step 3</p>
+            <h3>Calculate Index</h3>
+            <label for="indexLabel">Index label</label>
+            <input id="indexLabel" type="text" value="Custom ND" />
 
-          <button id="computeBtn" type="button">Calculate Index</button>
+            <label for="formulaInput">Raster algebra formula</label>
+            <input id="formulaInput" type="text" value="({Band A} - {Band B}) / ({Band A} + {Band B})" />
+            <details class="formula-help">
+              <summary>Formula Help (Aliases, Helpers, Constants)</summary>
+              <p id="formulaHint" class="small">
+                Rename each uploaded band with an alias, then use alias names in formulas.
+                Use alias names directly (for example, `B4`) or `[raw file name]` for direct references.
+              </p>
+              <p class="small">
+                Need index ideas? Browse formulas at
+                <a href="https://www.indexdatabase.de/" target="_blank" rel="noopener noreferrer">IndexDatabase</a>.
+              </p>
+            </details>
+            <button id="computeBtn" type="button">Calculate Index</button>
+          </div>
 
-          <h3>Time Series</h3>
-          <label for="timeLabel">Time label</label>
-          <input id="timeLabel" type="text" placeholder="2026-03-25 Scene A" />
-          <p class="small">Each calculation is saved as a snapshot you can revisit on the map.</p>
-          <label for="snapshotSelect">Saved snapshots</label>
-          <select id="snapshotSelect"></select>
-          <button id="showSnapshotBtn" type="button">Show Selected Snapshot</button>
+          <div class="workflow-step">
+            <p class="step-kicker">Step 4</p>
+            <h3>Save And Compare</h3>
+            <p class="small">Each calculation is saved using its index label so you can revisit and compare results.</p>
+            <label for="snapshotSelect">Saved indices</label>
+            <select id="snapshotSelect"></select>
+            <button id="showSnapshotBtn" type="button">Show Selected Index</button>
+            <button id="deleteSnapshotBtn" type="button" class="secondary-btn">Delete Selected Index</button>
+          </div>
         </section>
 
-        <section class="instructions">
-          <h2>Instructions</h2>
-          <p class="small">Use this reference to find standard remote sensing indices and formulas:</p>
-          <p class="small"><a href="https://www.indexdatabase.de/" target="_blank" rel="noopener noreferrer">https://www.indexdatabase.de/</a></p>
-        </section>
       </div>
 
       <section class="canvases">
@@ -69,14 +83,7 @@
         </article>
         <article>
           <div class="panel-head">
-            <h2>Index Map</h2>
-            <div class="export-controls">
-              <select id="indexExportFormat" class="icon-btn" title="Index export format" aria-label="Index export format">
-                <option value="png" selected>PNG</option>
-                <option value="tif">TIF</option>
-              </select>
-              <button id="exportIndexBtn" type="button" class="icon-btn" title="Export index image">Export</button>
-            </div>
+            <h2>Preview Index</h2>
           </div>
           <canvas id="indexCanvas" width="512" height="512"></canvas>
         </article>
@@ -97,16 +104,17 @@
           </div>
           <div class="pixel-panel">
             <p id="pixelCoords" class="small">Click the map to inspect a pixel.</p>
-            <p id="pixelCurrent" class="small">Current snapshot value: -</p>
-            <p id="pixelPrevious" class="small">Previous snapshot value: -</p>
+            <div id="pixelValuesList" class="pixel-values-list"></div>
             <canvas id="pixelTrendCanvas" width="360" height="180"></canvas>
+            <p class="small">
+              CSV export includes `snapshot_id`, `index_label`, `lat`, `lon`, `pixel_x`, `pixel_y`, `pixel_value`, and `status` (`ok` or `outside_extent`).
+            </p>
           </div>
         </article>
       </section>
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/utif@3.1.0/UTIF.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/proj4@2.11.0/dist/proj4.js"></script>
     <script
       src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"

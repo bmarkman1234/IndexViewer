@@ -6,9 +6,9 @@ const indexLabel = document.getElementById("indexLabel");
 const formulaInput = document.getElementById("formulaInput");
 const formulaHint = document.getElementById("formulaHint");
 const computeBtn = document.getElementById("computeBtn");
-const timeLabelInput = document.getElementById("timeLabel");
 const snapshotSelect = document.getElementById("snapshotSelect");
 const showSnapshotBtn = document.getElementById("showSnapshotBtn");
+const deleteSnapshotBtn = document.getElementById("deleteSnapshotBtn");
 const compareBlendInput = document.getElementById("compareBlend");
 const compareBlendValue = document.getElementById("compareBlendValue");
 
@@ -16,15 +16,12 @@ const previewCanvas = document.getElementById("previewCanvas");
 const previewCtx = previewCanvas.getContext("2d");
 const indexCanvas = document.getElementById("indexCanvas");
 const indexCtx = indexCanvas.getContext("2d");
-const exportIndexBtn = document.getElementById("exportIndexBtn");
-const indexExportFormat = document.getElementById("indexExportFormat");
 const exportProbeCsvBtn = document.getElementById("exportProbeCsvBtn");
 const mapContainer = document.getElementById("mapContainer");
 const overlayOpacityInput = document.getElementById("overlayOpacity");
 const overlayOpacityValue = document.getElementById("overlayOpacityValue");
 const pixelCoords = document.getElementById("pixelCoords");
-const pixelCurrent = document.getElementById("pixelCurrent");
-const pixelPrevious = document.getElementById("pixelPrevious");
+const pixelValuesList = document.getElementById("pixelValuesList");
 const pixelTrendCanvas = document.getElementById("pixelTrendCanvas");
 const pixelTrendCtx = pixelTrendCanvas ? pixelTrendCanvas.getContext("2d") : null;
 
@@ -104,6 +101,7 @@ function setCompareBlendFromInput() {
   const pct = Math.max(0, Math.min(100, Number(compareBlendInput.value || 50)));
   compareBlend = pct / 100;
   if (compareBlendValue) compareBlendValue.textContent = `${Math.round(pct)}%`;
+  // Visual-only blend: pixel value sampling remains based on saved snapshot data.
   applyMapOverlayOpacity();
 }
 
@@ -331,108 +329,18 @@ function triggerDownload(url, filename) {
   document.body.removeChild(link);
 }
 
-function buildWgs84GeoTiffMetadata(snapshot, width, height) {
-  if (!snapshot || !snapshot.geoBounds) return null;
-  const [minLon, minLat, maxLon, maxLat] = snapshot.geoBounds;
-  if (![minLon, minLat, maxLon, maxLat].every(Number.isFinite)) return null;
-  if (maxLon <= minLon || maxLat <= minLat) return null;
-  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
-
-  const scaleX = (maxLon - minLon) / width;
-  const scaleY = (maxLat - minLat) / height;
-
-  return {
-    // ModelPixelScaleTag
-    t33550: [scaleX, scaleY, 0],
-    // ModelTiepointTag: raster(0,0,0) -> geo(minLon,maxLat,0)
-    t33922: [0, 0, 0, minLon, maxLat, 0],
-    // GeoKeyDirectoryTag: GTModelType=Geographic, GTRasterType=PixelIsArea, GeographicType=WGS84
-    t34735: [
-      1, 1, 0, 3,
-      1024, 0, 1, 2,
-      1025, 0, 1, 1,
-      2048, 0, 1, 4326
-    ]
-  };
-}
-
-async function buildSnapshotCanvas(selected) {
-  if (!selected) return indexCanvas;
-  const img = new Image();
-  img.src = selected.imageUrl;
-  await img.decode();
-  const canvas = document.createElement("canvas");
-  canvas.width = selected.width;
-  canvas.height = selected.height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-  ctx.drawImage(img, 0, 0, selected.width, selected.height);
-  return canvas;
-}
-
-function exportCanvasAsTif(canvas, filename, metadata = null) {
-  if (!window.UTIF || !canvas) return false;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return false;
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const tifBuffer = UTIF.encodeImage(imageData.data, canvas.width, canvas.height, metadata || undefined);
-  const blob = new Blob([tifBuffer], { type: "image/tiff" });
-  const url = URL.createObjectURL(blob);
-  triggerDownload(url, filename);
-  URL.revokeObjectURL(url);
-  return true;
-}
-
-async function exportCurrentIndexImage() {
-  const selectedId = snapshotSelect && snapshotSelect.value ? snapshotSelect.value : "";
-  const selected = snapshotStore.find((s) => s.id === selectedId) || snapshotStore[snapshotStore.length - 1];
-  if (!selected && (!indexCanvas || indexCanvas.width === 0 || indexCanvas.height === 0)) {
-    setStatus("No index image available to export yet.");
-    return;
-  }
-
-  const stamp = selected ? selected.timeLabel.replace(/[^A-Za-z0-9_-]+/g, "_") : "current";
-  const format = (indexExportFormat && indexExportFormat.value ? indexExportFormat.value : "png").toLowerCase();
-
-  if (format === "tif") {
-    let exportCanvas = indexCanvas;
-    if (selected) {
-      try {
-        const built = await buildSnapshotCanvas(selected);
-        if (built) exportCanvas = built;
-      } catch (err) {
-        setStatus(`Could not prepare selected snapshot for TIF export: ${err.message}`);
-        return;
-      }
-    }
-    const metadata = selected ? buildWgs84GeoTiffMetadata(selected, exportCanvas.width, exportCanvas.height) : null;
-    const ok = exportCanvasAsTif(exportCanvas, `index_map_${stamp}.tif`, metadata);
-    if (!ok) {
-      setStatus("TIF export is unavailable in this browser. Please use PNG.");
-      return;
-    }
-    if (metadata) setStatus("Index image exported as GeoTIFF (WGS84).");
-    else setStatus("Index image exported as TIF (no spatial reference available for this snapshot).");
-    return;
-  }
-
-  const sourceUrl = selected ? selected.imageUrl : indexCanvas.toDataURL("image/png");
-  triggerDownload(sourceUrl, `index_map_${stamp}.png`);
-  setStatus("Index image exported as PNG.");
-}
-
 function exportPixelProbeCsv() {
   if (!probeLatLng) {
     setStatus("Click on the map first to choose a pixel for CSV export.");
     return;
   }
   if (snapshotStore.length === 0) {
-    setStatus("No snapshots available for pixel value export.");
+    setStatus("No saved indices available for pixel value export.");
     return;
   }
 
   const rows = [
-    ["snapshot_id", "time_label", "index_label", "lat", "lon", "pixel_x", "pixel_y", "pixel_value", "status"].join(",")
+    ["snapshot_id", "index_label", "lat", "lon", "pixel_x", "pixel_y", "pixel_value", "status"].join(",")
   ];
   snapshotStore.forEach((snap) => {
     const sample = sampleSnapshotAtLatLon(snap, probeLatLng.lat, probeLatLng.lon);
@@ -440,7 +348,6 @@ function exportPixelProbeCsv() {
       rows.push(
         [
           snap.id,
-          `"${snap.timeLabel.replace(/"/g, '""')}"`,
           `"${snap.indexLabel.replace(/"/g, '""')}"`,
           probeLatLng.lat.toFixed(6),
           probeLatLng.lon.toFixed(6),
@@ -455,7 +362,6 @@ function exportPixelProbeCsv() {
     rows.push(
       [
         snap.id,
-        `"${snap.timeLabel.replace(/"/g, '""')}"`,
         `"${snap.indexLabel.replace(/"/g, '""')}"`,
         probeLatLng.lat.toFixed(6),
         probeLatLng.lon.toFixed(6),
@@ -477,43 +383,41 @@ function exportPixelProbeCsv() {
 }
 
 function updatePixelProbePanel() {
-  if (!pixelCoords || !pixelCurrent || !pixelPrevious) return;
+  if (!pixelCoords || !pixelValuesList) return;
   if (!probeLatLng) {
     pixelCoords.textContent = "Click the map to inspect a pixel.";
-    pixelCurrent.textContent = "Current snapshot value: -";
-    pixelPrevious.textContent = "Previous snapshot value: -";
+    pixelValuesList.innerHTML = '<p class="small">Pixel values will appear here once you click the map.</p>';
     drawPixelTrendChart([]);
     return;
   }
 
-  const latestId = snapshotStore.length > 0 ? snapshotStore[snapshotStore.length - 1].id : "";
-  const selectedId = snapshotSelect && snapshotSelect.value ? snapshotSelect.value : latestId;
-  const selectedIdx = snapshotStore.findIndex((s) => s.id === selectedId);
-  const selectedSnapshot = selectedIdx >= 0 ? snapshotStore[selectedIdx] : null;
-  const previousSnapshot = selectedIdx > 0 ? snapshotStore[selectedIdx - 1] : null;
-
-  const currentSample = selectedSnapshot ? sampleSnapshotAtLatLon(selectedSnapshot, probeLatLng.lat, probeLatLng.lon) : null;
-  const previousSample = previousSnapshot ? sampleSnapshotAtLatLon(previousSnapshot, probeLatLng.lat, probeLatLng.lon) : null;
   pixelCoords.textContent = `Lat/Lon: ${probeLatLng.lat.toFixed(6)}, ${probeLatLng.lon.toFixed(6)}`;
-  pixelCurrent.textContent = currentSample
-    ? `Current (${selectedSnapshot.timeLabel}) value: ${currentSample.value.toFixed(4)} at px(${currentSample.x}, ${currentSample.y})`
-    : "Current snapshot value: outside extent or unavailable";
-  pixelPrevious.textContent = previousSample
-    ? `Previous (${previousSnapshot.timeLabel}) value: ${previousSample.value.toFixed(4)} at px(${previousSample.x}, ${previousSample.y})`
-    : "Previous snapshot value: outside extent or unavailable";
+
+  if (snapshotStore.length === 0) {
+    pixelValuesList.innerHTML = '<p class="small">No saved indices available yet.</p>';
+    drawPixelTrendChart([]);
+    return;
+  }
+
+  pixelValuesList.innerHTML = "";
+  snapshotStore.forEach((snap, i) => {
+    const sample = sampleSnapshotAtLatLon(snap, probeLatLng.lat, probeLatLng.lon);
+    const row = document.createElement("p");
+    row.className = "small";
+    const label = snap.indexLabel || `Index ${i + 1}`;
+    row.textContent = sample
+      ? `${label}: ${sample.value.toFixed(4)}`
+      : `${label}: outside extent or unavailable`;
+    pixelValuesList.appendChild(row);
+  });
 
   const trendPoints = snapshotStore
     .map((snap) => {
       const sample = sampleSnapshotAtLatLon(snap, probeLatLng.lat, probeLatLng.lon);
-      return sample ? { label: snap.timeLabel, value: sample.value } : null;
+      return sample ? { label: snap.indexLabel, value: sample.value } : null;
     })
     .filter(Boolean);
   drawPixelTrendChart(trendPoints);
-}
-
-function buildDefaultTimeLabel() {
-  const now = new Date();
-  return now.toISOString().slice(0, 19).replace("T", " ");
 }
 
 function renderSnapshotSelect() {
@@ -522,13 +426,12 @@ function renderSnapshotSelect() {
   snapshotStore.forEach((snap) => {
     const option = document.createElement("option");
     option.value = snap.id;
-    option.textContent = `${snap.timeLabel} | ${snap.indexLabel}`;
+    option.textContent = snap.indexLabel;
     snapshotSelect.appendChild(option);
   });
 }
 
 function saveSnapshot(imageUrl, values, label, formula, min, max) {
-  const timeLabel = (timeLabelInput && timeLabelInput.value.trim()) || buildDefaultTimeLabel();
   const id = `snap_${snapshotCounter}`;
   snapshotCounter += 1;
   snapshotStore.push({
@@ -539,7 +442,6 @@ function saveSnapshot(imageUrl, values, label, formula, min, max) {
     formula,
     min,
     max,
-    timeLabel,
     geoBounds: workingGeoBounds,
     width: workingWidth,
     height: workingHeight
@@ -552,7 +454,7 @@ function saveSnapshot(imageUrl, values, label, formula, min, max) {
 async function showSnapshotById(snapshotId) {
   const snap = snapshotStore.find((s) => s.id === snapshotId);
   if (!snap) {
-    setStatus("Selected snapshot was not found.");
+    setStatus("Selected index was not found.");
     return;
   }
 
@@ -569,13 +471,52 @@ async function showSnapshotById(snapshotId) {
   if (snapshotIdx > 0) {
     const prev = snapshotStore[snapshotIdx - 1];
     setStatus(
-      `Showing "${snap.timeLabel}" with change slider against previous "${prev.timeLabel}". Range: ${snap.min.toFixed(4)} to ${snap.max.toFixed(4)}.`
+      `Showing "${snap.indexLabel}" with change slider against previous "${prev.indexLabel}". Range: ${snap.min.toFixed(4)} to ${snap.max.toFixed(4)}.`
     );
     updatePixelProbePanel();
     return;
   }
-  setStatus(`Showing snapshot "${snap.timeLabel}" (${snap.indexLabel}). Range: ${snap.min.toFixed(4)} to ${snap.max.toFixed(4)}.`);
+  setStatus(`Showing index "${snap.indexLabel}". Range: ${snap.min.toFixed(4)} to ${snap.max.toFixed(4)}.`);
   updatePixelProbePanel();
+}
+
+async function deleteSelectedSnapshot() {
+  const selectedId = snapshotSelect && snapshotSelect.value ? snapshotSelect.value : "";
+  if (!selectedId) {
+    setStatus("No index selected to delete.");
+    return;
+  }
+
+  const idx = snapshotStore.findIndex((s) => s.id === selectedId);
+  if (idx < 0) {
+    setStatus("Selected index was not found.");
+    return;
+  }
+
+  const [removed] = snapshotStore.splice(idx, 1);
+  renderSnapshotSelect();
+
+  if (snapshotStore.length === 0) {
+    indexCtx.clearRect(0, 0, indexCanvas.width, indexCanvas.height);
+    if (map && mapBaseOverlay) {
+      map.removeLayer(mapBaseOverlay);
+      mapBaseOverlay = null;
+    }
+    clearComparisonOverlay();
+    updatePixelProbePanel();
+    setStatus(`Deleted "${removed.indexLabel}". No saved indices remain.`);
+    return;
+  }
+
+  const nextIdx = Math.min(idx, snapshotStore.length - 1);
+  const next = snapshotStore[nextIdx];
+  if (snapshotSelect) snapshotSelect.value = next.id;
+  try {
+    await showSnapshotById(next.id);
+    setStatus(`Deleted "${removed.indexLabel}". Showing "${next.indexLabel}".`);
+  } catch (err) {
+    setStatus(`Deleted "${removed.indexLabel}", but could not load the next index: ${err.message}`);
+  }
 }
 
 function showComparisonForSnapshot(snapshotId) {
@@ -826,7 +767,7 @@ function renderFormulaHint() {
     return;
   }
   const aliasRefs = [...aliasStore.entries()].map(([raw, alias]) => `{${alias}}=[${raw}]`).join(", ");
-  formulaHint.textContent = `Aliases: ${aliasRefs}. Use {alias} or [raw name]. Helpers: ${Object.keys(rasterFns).join(", ")}. Constants: ${Object.keys(rasterConsts).join(", ")}.`;
+  formulaHint.textContent = `Aliases: ${aliasRefs}. Use alias directly (e.g., B4) or [raw name]. {alias} is optional. Helpers: ${Object.keys(rasterFns).join(", ")}. Constants: ${Object.keys(rasterConsts).join(", ")}.`;
 }
 
 function renderPreview() {
@@ -871,6 +812,9 @@ function compileRasterFormula(rawFormula) {
 
   const refs = new Map();
   const aliasRefs = new Map();
+  const helperNames = Object.keys(rasterFns);
+  const constNames = Object.keys(rasterConsts);
+  const reserved = new Set([...helperNames, ...constNames]);
   let refIndex = 0;
   let transformed = normalized.replace(/\[([^\]]+)\]/g, (_, label) => {
     const bandName = label.trim();
@@ -896,6 +840,19 @@ function compileRasterFormula(rawFormula) {
     return aliasRefs.get(aliasName);
   });
 
+  // Also support alias usage without curly braces for identifier-like aliases (e.g., B4, NIR).
+  const aliasCandidates = [...aliasStore.values()]
+    .filter((alias) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(alias) && !reserved.has(alias))
+    .sort((a, b) => b.length - a.length);
+  aliasCandidates.forEach((aliasName) => {
+    if (!aliasRefs.has(aliasName)) {
+      aliasRefs.set(aliasName, `A${aliasRefs.size}`);
+    }
+    const symbol = aliasRefs.get(aliasName);
+    const pattern = new RegExp(`\\b${aliasName}\\b`, "g");
+    transformed = transformed.replace(pattern, symbol);
+  });
+
   if (transformed.includes("[") || transformed.includes("]")) {
     throw new Error("Malformed band reference. Use [exact band name].");
   }
@@ -908,14 +865,12 @@ function compileRasterFormula(rawFormula) {
   const aliasRefsList = [...aliasRefs.entries()].map(([name, symbol]) => ({ name, symbol }));
   const aliasSymbols = aliasRefsList.map((entry) => entry.symbol);
   const aliasToRaw = new Map([...aliasStore.entries()].map(([raw, alias]) => [alias, raw]));
-  const helperNames = Object.keys(rasterFns);
-  const constNames = Object.keys(rasterConsts);
   const allowed = new Set([...bandSymbols, ...aliasSymbols, ...helperNames, ...constNames]);
   const identifiers = transformed.match(/[A-Za-z_][A-Za-z0-9_]*/g) || [];
 
   for (const id of identifiers) {
     if (!allowed.has(id)) {
-      throw new Error(`Unknown token "${id}". Use {alias}, [band name], and supported helpers.`);
+      throw new Error(`Unknown token "${id}". Use alias names (no braces needed), [band name], and supported helpers.`);
     }
   }
 
@@ -1017,7 +972,7 @@ function computeIndex() {
   updateMapOverlay(imageUrl, workingGeoBounds);
   showComparisonForSnapshot(snapshotId);
   setStatus(
-    `${label} computed on ${workingWidth} x ${workingHeight} using "${formula}". Range: ${min.toFixed(4)} to ${max.toFixed(4)}. Saved to timeline (${snapshotStore.length}).`
+    `${label} computed on ${workingWidth} x ${workingHeight} using "${formula}". Range: ${min.toFixed(4)} to ${max.toFixed(4)}. Saved to indices (${snapshotStore.length}).`
   );
 }
 
@@ -1096,21 +1051,23 @@ if (overlayOpacityInput) {
 if (compareBlendInput) {
   compareBlendInput.addEventListener("input", setCompareBlendFromInput);
 }
-if (timeLabelInput) {
-  timeLabelInput.value = buildDefaultTimeLabel();
-}
 if (showSnapshotBtn) {
   showSnapshotBtn.addEventListener("click", async () => {
     const id = snapshotSelect ? snapshotSelect.value : "";
     if (!id) {
-      setStatus("No snapshot selected yet.");
+      setStatus("No index selected yet.");
       return;
     }
     try {
       await showSnapshotById(id);
     } catch (err) {
-      setStatus(`Could not show snapshot: ${err.message}`);
+      setStatus(`Could not show image: ${err.message}`);
     }
+  });
+}
+if (deleteSnapshotBtn) {
+  deleteSnapshotBtn.addEventListener("click", async () => {
+    await deleteSelectedSnapshot();
   });
 }
 if (snapshotSelect) {
@@ -1120,12 +1077,9 @@ if (snapshotSelect) {
     try {
       await showSnapshotById(id);
     } catch (err) {
-      setStatus(`Could not show snapshot: ${err.message}`);
+      setStatus(`Could not show image: ${err.message}`);
     }
   });
-}
-if (exportIndexBtn) {
-  exportIndexBtn.addEventListener("click", exportCurrentIndexImage);
 }
 if (exportProbeCsvBtn) {
   exportProbeCsvBtn.addEventListener("click", exportPixelProbeCsv);
