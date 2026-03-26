@@ -1,6 +1,6 @@
 # IndexViewer
 
-Simple web app for calculating and comparing raster indices. https://bmarkman1234.github.io/IndexViewer/
+A lightweight web app for calculating and comparing raster indices. https://bmarkman1234.github.io/IndexViewer/
 
 ## Quick Start
 
