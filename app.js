@@ -6,6 +6,17 @@ const indexLabel = document.getElementById("indexLabel");
 const formulaInput = document.getElementById("formulaInput");
 const formulaHint = document.getElementById("formulaHint");
 const computeBtn = document.getElementById("computeBtn");
+const workflowProgressText = document.getElementById("workflowProgressText");
+const workflowProgressFill = document.getElementById("workflowProgressFill");
+const newIndexBtn = document.getElementById("newIndexBtn");
+const step1 = document.getElementById("step1");
+const step2 = document.getElementById("step2");
+const step3 = document.getElementById("step3");
+const step4 = document.getElementById("step4");
+const step1State = document.getElementById("step1State");
+const step2State = document.getElementById("step2State");
+const step3State = document.getElementById("step3State");
+const step4State = document.getElementById("step4State");
 const snapshotSelect = document.getElementById("snapshotSelect");
 const showSnapshotBtn = document.getElementById("showSnapshotBtn");
 const deleteSnapshotBtn = document.getElementById("deleteSnapshotBtn");
@@ -19,7 +30,6 @@ const indexCtx = indexCanvas.getContext("2d");
 const exportProbeCsvBtn = document.getElementById("exportProbeCsvBtn");
 const mapContainer = document.getElementById("mapContainer");
 const overlayOpacityInput = document.getElementById("overlayOpacity");
-const overlayOpacityValue = document.getElementById("overlayOpacityValue");
 const pixelCoords = document.getElementById("pixelCoords");
 const pixelValuesList = document.getElementById("pixelValuesList");
 const pixelTrendCanvas = document.getElementById("pixelTrendCanvas");
@@ -27,6 +37,7 @@ const pixelTrendCtx = pixelTrendCanvas ? pixelTrendCanvas.getContext("2d") : nul
 
 const bandStore = new Map();
 const aliasStore = new Map();
+const aliasConfirmedStore = new Set();
 let workingWidth = 0;
 let workingHeight = 0;
 let workingGeoBounds = null;
@@ -38,6 +49,7 @@ let overlayOpacity = 0.7;
 let compareBlend = 0.5;
 let probeLatLng = null;
 let snapshotCounter = 0;
+let newIndexCyclePending = false;
 const snapshotStore = [];
 
 const rasterFns = {
@@ -62,6 +74,50 @@ function setStatus(text) {
   statusLine.textContent = text;
 }
 
+function applyStepState(cardEl, stateEl, state, label) {
+  if (stateEl) {
+    stateEl.textContent = label;
+    stateEl.classList.remove("pending", "in-progress", "complete");
+    stateEl.classList.add(state);
+  }
+  if (cardEl) {
+    cardEl.classList.remove("pending", "in-progress", "complete");
+    cardEl.classList.add(state);
+    if (state === "in-progress") cardEl.classList.add("in-progress");
+    if (state === "complete") cardEl.classList.add("complete");
+  }
+}
+
+function updateWorkflowProgress() {
+  const hasBands = bandStore.size > 0;
+  const aliasesReady =
+    hasBands &&
+    aliasStore.size === bandStore.size &&
+    aliasConfirmedStore.size === bandStore.size &&
+    [...aliasStore.values()].every((alias) => alias.trim().length > 0);
+  const hasSavedSnapshots = snapshotStore.length > 0;
+  const hasComputed = hasSavedSnapshots && !newIndexCyclePending;
+  const hasSavedForCompare = hasSavedSnapshots && !newIndexCyclePending;
+
+  const completedCount = [hasBands, aliasesReady, hasComputed, hasSavedForCompare].filter(Boolean).length;
+  const firstIncomplete = !hasBands ? 1 : !aliasesReady ? 2 : !hasComputed ? 3 : !hasSavedForCompare ? 4 : 0;
+
+  applyStepState(step1, step1State, hasBands ? "complete" : firstIncomplete === 1 ? "in-progress" : "pending", hasBands ? "Complete" : firstIncomplete === 1 ? "In Progress" : "Pending");
+  applyStepState(step2, step2State, aliasesReady ? "complete" : firstIncomplete === 2 ? "in-progress" : "pending", aliasesReady ? "Complete" : firstIncomplete === 2 ? "In Progress" : "Pending");
+  applyStepState(step3, step3State, hasComputed ? "complete" : firstIncomplete === 3 ? "in-progress" : "pending", hasComputed ? "Complete" : firstIncomplete === 3 ? "In Progress" : "Pending");
+  applyStepState(step4, step4State, hasSavedForCompare ? "complete" : firstIncomplete === 4 ? "in-progress" : "pending", hasSavedForCompare ? "Complete" : firstIncomplete === 4 ? "In Progress" : "Pending");
+
+  if (workflowProgressText) workflowProgressText.textContent = `${completedCount} of 4 steps complete`;
+  if (workflowProgressFill) workflowProgressFill.style.width = `${(completedCount / 4) * 100}%`;
+}
+
+function startNewIndexCycle() {
+  newIndexCyclePending = true;
+  updateWorkflowProgress();
+  if (indexLabel) indexLabel.focus();
+  setStatus("New index cycle started. Adjust index label/formula and calculate. Saved indices remain in the compare list.");
+}
+
 function initMap() {
   if (map || !window.L || !mapContainer) return;
   map = L.map("mapContainer", { zoomControl: true });
@@ -75,9 +131,9 @@ function initMap() {
     if (!mapProbeMarker) {
       mapProbeMarker = L.circleMarker(e.latlng, {
         radius: 5,
-        color: "#1f2a33",
+        color: "#111111",
         weight: 1,
-        fillColor: "#f8edd7",
+        fillColor: "#ffffff",
         fillOpacity: 1
       }).addTo(map);
     } else {
@@ -92,7 +148,6 @@ function setOverlayOpacityFromInput() {
   if (!overlayOpacityInput) return;
   const pct = Math.max(0, Math.min(100, Number(overlayOpacityInput.value || 70)));
   overlayOpacity = pct / 100;
-  if (overlayOpacityValue) overlayOpacityValue.textContent = `${Math.round(pct)}%`;
   applyMapOverlayOpacity();
 }
 
@@ -261,11 +316,11 @@ function drawPixelTrendChart(points) {
   const w = pixelTrendCanvas.width;
   const h = pixelTrendCanvas.height;
   pixelTrendCtx.clearRect(0, 0, w, h);
-  pixelTrendCtx.fillStyle = "#fbfbfb";
+  pixelTrendCtx.fillStyle = "#ffffff";
   pixelTrendCtx.fillRect(0, 0, w, h);
 
   if (!points || points.length === 0) {
-    pixelTrendCtx.fillStyle = "#5a6670";
+    pixelTrendCtx.fillStyle = "#444444";
     pixelTrendCtx.font = "12px Segoe UI";
     pixelTrendCtx.fillText("No pixel values available for trend.", 12, 24);
     return;
@@ -286,7 +341,7 @@ function drawPixelTrendChart(points) {
   const spanX = Math.max(1, points.length - 1);
   const spanY = max - min;
 
-  pixelTrendCtx.strokeStyle = "#d5d0c6";
+  pixelTrendCtx.strokeStyle = "#d0d0d0";
   pixelTrendCtx.lineWidth = 1;
   pixelTrendCtx.beginPath();
   pixelTrendCtx.moveTo(left, top);
@@ -294,12 +349,12 @@ function drawPixelTrendChart(points) {
   pixelTrendCtx.lineTo(right, bottom);
   pixelTrendCtx.stroke();
 
-  pixelTrendCtx.fillStyle = "#4b5560";
+  pixelTrendCtx.fillStyle = "#333333";
   pixelTrendCtx.font = "11px Segoe UI";
   pixelTrendCtx.fillText(max.toFixed(3), 4, top + 4);
   pixelTrendCtx.fillText(min.toFixed(3), 4, bottom);
 
-  pixelTrendCtx.strokeStyle = "#2f6a4d";
+  pixelTrendCtx.strokeStyle = "#111111";
   pixelTrendCtx.lineWidth = 2;
   pixelTrendCtx.beginPath();
   points.forEach((p, i) => {
@@ -310,7 +365,7 @@ function drawPixelTrendChart(points) {
   });
   pixelTrendCtx.stroke();
 
-  pixelTrendCtx.fillStyle = "#2f6a4d";
+  pixelTrendCtx.fillStyle = "#111111";
   points.forEach((p, i) => {
     const x = left + ((right - left) * i) / spanX;
     const y = bottom - ((p.value - min) / spanY) * (bottom - top);
@@ -429,6 +484,7 @@ function renderSnapshotSelect() {
     option.textContent = snap.indexLabel;
     snapshotSelect.appendChild(option);
   });
+  updateWorkflowProgress();
 }
 
 function saveSnapshot(imageUrl, values, label, formula, min, max) {
@@ -753,7 +809,9 @@ function renderAliasEditor() {
         setStatus(`Alias "${proposed}" was already in use. Renamed to "${normalized}".`);
       }
       aliasStore.set(rawName, normalized);
+      aliasConfirmedStore.add(rawName);
       renderFormulaHint();
+      updateWorkflowProgress();
     });
     wrapper.appendChild(input);
     bandAliasList.appendChild(wrapper);
@@ -897,11 +955,13 @@ function computeIndex() {
   const formula = formulaInput.value.trim();
   if (!formula) {
     setStatus("Enter a raster algebra formula.");
+    updateWorkflowProgress();
     return;
   }
 
   if (bandStore.size === 0) {
     setStatus("Upload at least one band first.");
+    updateWorkflowProgress();
     return;
   }
 
@@ -910,6 +970,7 @@ function computeIndex() {
     compiled = compileRasterFormula(formula);
   } catch (err) {
     setStatus(err.message);
+    updateWorkflowProgress();
     return;
   }
 
@@ -946,6 +1007,7 @@ function computeIndex() {
       value = evaluator(...evalArgs);
     } catch (err) {
       setStatus(`Formula evaluation failed near pixel ${i}: ${err.message}`);
+      updateWorkflowProgress();
       return;
     }
     const safeValue = Number.isFinite(value) ? value : 0;
@@ -969,11 +1031,13 @@ function computeIndex() {
   indexCtx.putImageData(img, 0, 0);
   const imageUrl = indexCanvas.toDataURL("image/png");
   const snapshotId = saveSnapshot(imageUrl, out, label, formula, min, max);
+  newIndexCyclePending = false;
   updateMapOverlay(imageUrl, workingGeoBounds);
   showComparisonForSnapshot(snapshotId);
   setStatus(
     `${label} computed on ${workingWidth} x ${workingHeight} using "${formula}". Range: ${min.toFixed(4)} to ${max.toFixed(4)}. Saved to indices (${snapshotStore.length}).`
   );
+  updateWorkflowProgress();
 }
 
 async function ingestFile(file) {
@@ -1001,6 +1065,7 @@ async function handleFiles(files) {
 
   bandStore.clear();
   aliasStore.clear();
+  aliasConfirmedStore.clear();
   for (let i = 0; i < files.length; i += 1) {
     try {
       await ingestFile(files[i]);
@@ -1015,6 +1080,7 @@ async function handleFiles(files) {
     renderBandList();
     renderAliasEditor();
     renderFormulaHint();
+    updateWorkflowProgress();
     return;
   }
 
@@ -1039,6 +1105,7 @@ async function handleFiles(files) {
   renderPreview();
   indexCtx.clearRect(0, 0, indexCanvas.width, indexCanvas.height);
   setStatus(`Loaded ${bandStore.size} bands. Rename aliases as needed, then calculate with alias-based raster algebra.`);
+  updateWorkflowProgress();
 }
 
 initMap();
@@ -1046,10 +1113,10 @@ setOverlayOpacityFromInput();
 setCompareBlendFromInput();
 
 if (overlayOpacityInput) {
-  overlayOpacityInput.addEventListener("input", setOverlayOpacityFromInput);
+  overlayOpacityInput.addEventListener("change", setOverlayOpacityFromInput);
 }
 if (compareBlendInput) {
-  compareBlendInput.addEventListener("input", setCompareBlendFromInput);
+  compareBlendInput.addEventListener("change", setCompareBlendFromInput);
 }
 if (showSnapshotBtn) {
   showSnapshotBtn.addEventListener("click", async () => {
@@ -1061,9 +1128,12 @@ if (showSnapshotBtn) {
     try {
       await showSnapshotById(id);
     } catch (err) {
-      setStatus(`Could not show image: ${err.message}`);
+      setStatus(`Could not show index: ${err.message}`);
     }
   });
+}
+if (newIndexBtn) {
+  newIndexBtn.addEventListener("click", startNewIndexCycle);
 }
 if (deleteSnapshotBtn) {
   deleteSnapshotBtn.addEventListener("click", async () => {
@@ -1077,7 +1147,7 @@ if (snapshotSelect) {
     try {
       await showSnapshotById(id);
     } catch (err) {
-      setStatus(`Could not show image: ${err.message}`);
+      setStatus(`Could not show index: ${err.message}`);
     }
   });
 }
@@ -1091,3 +1161,4 @@ fileInput.addEventListener("change", (e) => {
 });
 
 computeBtn.addEventListener("click", computeIndex);
+updateWorkflowProgress();

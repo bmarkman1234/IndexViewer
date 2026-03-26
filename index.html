@@ -22,11 +22,25 @@
     <main class="viewer-layout">
       <div class="left-column">
         <section class="controls" aria-live="polite">
-          <h2>Workflow</h2>
+          <div class="controls-head">
+            <h2>Workflow</h2>
+            <button id="newIndexBtn" type="button" class="secondary-btn compact-btn">New Index</button>
+          </div>
+          <div class="workflow-progress">
+            <p id="workflowProgressText" class="small">0 of 4 steps complete</p>
+            <div class="progress-track" aria-hidden="true">
+              <div id="workflowProgressFill" class="progress-fill"></div>
+            </div>
+          </div>
 
-          <div class="workflow-step">
+          <div id="step1" class="workflow-step">
+            <div class="step-head">
+              <div>
             <p class="step-kicker">Step 1</p>
             <h3>Upload Bands</h3>
+              </div>
+              <span id="step1State" class="step-state pending">Pending</span>
+            </div>
             <p class="small">
               Upload one or more raster bands (`.tif/.tiff/.png/.jpg`), then assign a clear alias to each band.
             </p>
@@ -34,21 +48,31 @@
             <p id="statusLine" class="status">Waiting for files...</p>
           </div>
 
-          <div class="workflow-step">
+          <div id="step2" class="workflow-step">
+            <div class="step-head">
+              <div>
             <p class="step-kicker">Step 2</p>
             <h3>Review Bands</h3>
+              </div>
+              <span id="step2State" class="step-state pending">Pending</span>
+            </div>
             <ul id="bandList"></ul>
             <div id="bandAliasList" class="alias-list"></div>
           </div>
 
-          <div class="workflow-step">
+          <div id="step3" class="workflow-step">
+            <div class="step-head">
+              <div>
             <p class="step-kicker">Step 3</p>
             <h3>Calculate Index</h3>
+              </div>
+              <span id="step3State" class="step-state pending">Pending</span>
+            </div>
             <label for="indexLabel">Index label</label>
-            <input id="indexLabel" type="text" value="Custom ND" />
+            <input id="indexLabel" type="text"/>
 
-            <label for="formulaInput">Raster algebra formula</label>
-            <input id="formulaInput" type="text" value="({Band A} - {Band B}) / ({Band A} + {Band B})" />
+            <label for="formulaInput">Index Formula</label>
+            <input id="formulaInput" type="text" />
             <details class="formula-help">
               <summary>Formula Help (Aliases, Helpers, Constants)</summary>
               <p id="formulaHint" class="small">
@@ -63,9 +87,14 @@
             <button id="computeBtn" type="button">Calculate Index</button>
           </div>
 
-          <div class="workflow-step">
+          <div id="step4" class="workflow-step">
+            <div class="step-head">
+              <div>
             <p class="step-kicker">Step 4</p>
             <h3>Save And Compare</h3>
+              </div>
+              <span id="step4State" class="step-state pending">Pending</span>
+            </div>
             <p class="small">Each calculation is saved using its index label so you can revisit and compare results.</p>
             <label for="snapshotSelect">Saved indices</label>
             <select id="snapshotSelect"></select>
@@ -89,13 +118,39 @@
         </article>
         <article>
           <h2>Interactive Map Overlay</h2>
-          <div class="map-controls">
-            <label for="overlayOpacity">Overlay opacity: <span id="overlayOpacityValue">70%</span></label>
-            <input id="overlayOpacity" type="range" min="0" max="100" value="70" step="1" />
-            <label for="compareBlend">Change slider: <span id="compareBlendValue">50%</span></label>
-            <input id="compareBlend" type="range" min="0" max="100" step="1" value="50" />
+          <div class="map-stage">
+            <div class="map-controls">
+              <label for="overlayOpacity">Overlay opacity</label>
+              <select id="overlayOpacity">
+                <option value="100">100%</option>
+                <option value="90">90%</option>
+                <option value="80">80%</option>
+                <option value="70" selected>70%</option>
+                <option value="60">60%</option>
+                <option value="50">50%</option>
+                <option value="40">40%</option>
+                <option value="30">30%</option>
+                <option value="20">20%</option>
+                <option value="10">10%</option>
+                <option value="0">0%</option>
+              </select>
+              <label for="compareBlend">Change slider</label>
+              <select id="compareBlend">
+                <option value="100">100%</option>
+                <option value="90">90%</option>
+                <option value="80">80%</option>
+                <option value="70">70%</option>
+                <option value="60">60%</option>
+                <option value="50" selected>50%</option>
+                <option value="40">40%</option>
+                <option value="30">30%</option>
+                <option value="20">20%</option>
+                <option value="10">10%</option>
+                <option value="0">0%</option>
+              </select>
+            </div>
+            <div id="mapContainer" class="map-container" aria-label="Map with index overlay"></div>
           </div>
-          <div id="mapContainer" class="map-container" aria-label="Map with index overlay"></div>
         </article>
         <article aria-live="polite">
           <div class="panel-head">
