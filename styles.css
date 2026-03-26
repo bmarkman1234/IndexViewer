@@ -197,6 +197,12 @@ button:hover {
   border-radius: 6px;
 }
 
+.export-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .map-controls {
   margin-bottom: 0.6rem;
 }

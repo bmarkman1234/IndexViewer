@@ -17,6 +17,7 @@ const previewCtx = previewCanvas.getContext("2d");
 const indexCanvas = document.getElementById("indexCanvas");
 const indexCtx = indexCanvas.getContext("2d");
 const exportIndexBtn = document.getElementById("exportIndexBtn");
+const indexExportFormat = document.getElementById("indexExportFormat");
 const exportProbeCsvBtn = document.getElementById("exportProbeCsvBtn");
 const mapContainer = document.getElementById("mapContainer");
 const overlayOpacityInput = document.getElementById("overlayOpacity");
@@ -330,7 +331,59 @@ function triggerDownload(url, filename) {
   document.body.removeChild(link);
 }
 
-function exportCurrentIndexImage() {
+function buildWgs84GeoTiffMetadata(snapshot, width, height) {
+  if (!snapshot || !snapshot.geoBounds) return null;
+  const [minLon, minLat, maxLon, maxLat] = snapshot.geoBounds;
+  if (![minLon, minLat, maxLon, maxLat].every(Number.isFinite)) return null;
+  if (maxLon <= minLon || maxLat <= minLat) return null;
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+
+  const scaleX = (maxLon - minLon) / width;
+  const scaleY = (maxLat - minLat) / height;
+
+  return {
+    // ModelPixelScaleTag
+    t33550: [scaleX, scaleY, 0],
+    // ModelTiepointTag: raster(0,0,0) -> geo(minLon,maxLat,0)
+    t33922: [0, 0, 0, minLon, maxLat, 0],
+    // GeoKeyDirectoryTag: GTModelType=Geographic, GTRasterType=PixelIsArea, GeographicType=WGS84
+    t34735: [
+      1, 1, 0, 3,
+      1024, 0, 1, 2,
+      1025, 0, 1, 1,
+      2048, 0, 1, 4326
+    ]
+  };
+}
+
+async function buildSnapshotCanvas(selected) {
+  if (!selected) return indexCanvas;
+  const img = new Image();
+  img.src = selected.imageUrl;
+  await img.decode();
+  const canvas = document.createElement("canvas");
+  canvas.width = selected.width;
+  canvas.height = selected.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.drawImage(img, 0, 0, selected.width, selected.height);
+  return canvas;
+}
+
+function exportCanvasAsTif(canvas, filename, metadata = null) {
+  if (!window.UTIF || !canvas) return false;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return false;
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const tifBuffer = UTIF.encodeImage(imageData.data, canvas.width, canvas.height, metadata || undefined);
+  const blob = new Blob([tifBuffer], { type: "image/tiff" });
+  const url = URL.createObjectURL(blob);
+  triggerDownload(url, filename);
+  URL.revokeObjectURL(url);
+  return true;
+}
+
+async function exportCurrentIndexImage() {
   const selectedId = snapshotSelect && snapshotSelect.value ? snapshotSelect.value : "";
   const selected = snapshotStore.find((s) => s.id === selectedId) || snapshotStore[snapshotStore.length - 1];
   if (!selected && (!indexCanvas || indexCanvas.width === 0 || indexCanvas.height === 0)) {
@@ -338,10 +391,34 @@ function exportCurrentIndexImage() {
     return;
   }
 
-  const sourceUrl = selected ? selected.imageUrl : indexCanvas.toDataURL("image/png");
   const stamp = selected ? selected.timeLabel.replace(/[^A-Za-z0-9_-]+/g, "_") : "current";
+  const format = (indexExportFormat && indexExportFormat.value ? indexExportFormat.value : "png").toLowerCase();
+
+  if (format === "tif") {
+    let exportCanvas = indexCanvas;
+    if (selected) {
+      try {
+        const built = await buildSnapshotCanvas(selected);
+        if (built) exportCanvas = built;
+      } catch (err) {
+        setStatus(`Could not prepare selected snapshot for TIF export: ${err.message}`);
+        return;
+      }
+    }
+    const metadata = selected ? buildWgs84GeoTiffMetadata(selected, exportCanvas.width, exportCanvas.height) : null;
+    const ok = exportCanvasAsTif(exportCanvas, `index_map_${stamp}.tif`, metadata);
+    if (!ok) {
+      setStatus("TIF export is unavailable in this browser. Please use PNG.");
+      return;
+    }
+    if (metadata) setStatus("Index image exported as GeoTIFF (WGS84).");
+    else setStatus("Index image exported as TIF (no spatial reference available for this snapshot).");
+    return;
+  }
+
+  const sourceUrl = selected ? selected.imageUrl : indexCanvas.toDataURL("image/png");
   triggerDownload(sourceUrl, `index_map_${stamp}.png`);
-  setStatus("Index image exported.");
+  setStatus("Index image exported as PNG.");
 }
 
 function exportPixelProbeCsv() {
@@ -350,12 +427,12 @@ function exportPixelProbeCsv() {
     return;
   }
   if (snapshotStore.length === 0) {
-    setStatus("No snapshots available for pixel probe export.");
+    setStatus("No snapshots available for pixel value export.");
     return;
   }
 
   const rows = [
-    ["snapshot_id", "time_label", "index_label", "lat", "lon", "pixel_x", "pixel_y", "value", "status"].join(",")
+    ["snapshot_id", "time_label", "index_label", "lat", "lon", "pixel_x", "pixel_y", "pixel_value", "status"].join(",")
   ];
   snapshotStore.forEach((snap) => {
     const sample = sampleSnapshotAtLatLon(snap, probeLatLng.lat, probeLatLng.lon);
@@ -394,9 +471,9 @@ function exportPixelProbeCsv() {
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-  triggerDownload(url, `pixel_probe_${stamp}.csv`);
+  triggerDownload(url, `pixel_value_${stamp}.csv`);
   URL.revokeObjectURL(url);
-  setStatus("Pixel probe CSV exported.");
+  setStatus("Pixel value CSV exported.");
 }
 
 function updatePixelProbePanel() {

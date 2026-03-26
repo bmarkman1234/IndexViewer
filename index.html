@@ -70,7 +70,13 @@
         <article>
           <div class="panel-head">
             <h2>Index Map</h2>
-            <button id="exportIndexBtn" type="button" class="icon-btn" title="Export index image">Export</button>
+            <div class="export-controls">
+              <select id="indexExportFormat" class="icon-btn" title="Index export format" aria-label="Index export format">
+                <option value="png" selected>PNG</option>
+                <option value="tif">TIF</option>
+              </select>
+              <button id="exportIndexBtn" type="button" class="icon-btn" title="Export index image">Export</button>
+            </div>
           </div>
           <canvas id="indexCanvas" width="512" height="512"></canvas>
         </article>
@@ -86,8 +92,8 @@
         </article>
         <article aria-live="polite">
           <div class="panel-head">
-            <h2>Pixel Probe</h2>
-            <button id="exportProbeCsvBtn" type="button" class="icon-btn" title="Export pixel probe CSV">CSV</button>
+            <h2>Pixel Value</h2>
+            <button id="exportProbeCsvBtn" type="button" class="icon-btn" title="Export pixel value CSV">CSV</button>
           </div>
           <div class="pixel-panel">
             <p id="pixelCoords" class="small">Click the map to inspect a pixel.</p>
@@ -100,6 +106,7 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/utif@3.1.0/UTIF.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/proj4@2.11.0/dist/proj4.js"></script>
     <script
       src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
