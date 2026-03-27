@@ -52,6 +52,13 @@ let mapBaseOverlay = null;
 let mapCompareOverlay = null;
 let mapVectorOverlay = null;
 let mapProbeMarker = null;
+let measureMode = false;
+let measurePoints = [];
+let measureMarkers = [];
+let measurePolyline = null;
+let measureLayerGroup = null;
+let measureToggleEl = null;
+let measureReadoutEl = null;
 let overlayOpacity = 0.7;
 let compareBlend = 0.5;
 let probeLatLng = null;
@@ -87,6 +94,126 @@ function setStatus(text, step = 1) {
   };
   const target = stepStatusMap[step] || statusStep1;
   if (target) target.textContent = text;
+}
+
+function formatMeasureDistance(meters) {
+  if (!Number.isFinite(meters) || meters <= 0) return "0 m";
+  if (meters >= 1000) return `${(meters / 1000).toFixed(2)} km`;
+  return `${meters.toFixed(1)} m`;
+}
+
+function getMeasureDistanceMeters() {
+  if (!map || measurePoints.length < 2) return 0;
+  let total = 0;
+  for (let i = 1; i < measurePoints.length; i += 1) {
+    total += map.distance(measurePoints[i - 1], measurePoints[i]);
+  }
+  return total;
+}
+
+function updateMeasureReadout() {
+  if (!measureReadoutEl) return;
+  if (!measureMode && measurePoints.length === 0) {
+    measureReadoutEl.textContent = "Off";
+    return;
+  }
+  if (measurePoints.length === 0) {
+    measureReadoutEl.textContent = "Click map to start";
+    return;
+  }
+  if (measurePoints.length === 1) {
+    measureReadoutEl.textContent = "1 point";
+    return;
+  }
+  measureReadoutEl.textContent = formatMeasureDistance(getMeasureDistanceMeters());
+}
+
+function syncMeasureGeometry() {
+  if (!map || !measureLayerGroup) return;
+  if (measurePolyline) {
+    measureLayerGroup.removeLayer(measurePolyline);
+    measurePolyline = null;
+  }
+  measureMarkers.forEach((marker) => {
+    measureLayerGroup.removeLayer(marker);
+  });
+  measureMarkers = [];
+
+  if (measurePoints.length === 0) {
+    updateMeasureReadout();
+    return;
+  }
+
+  measurePoints.forEach((latlng) => {
+    const marker = L.circleMarker(latlng, {
+      radius: 4,
+      color: "#111111",
+      weight: 1,
+      fillColor: "#ffffff",
+      fillOpacity: 1
+    });
+    measureLayerGroup.addLayer(marker);
+    measureMarkers.push(marker);
+  });
+
+  if (measurePoints.length > 1) {
+    measurePolyline = L.polyline(measurePoints, {
+      color: "#111111",
+      weight: 2
+    });
+    measureLayerGroup.addLayer(measurePolyline);
+  }
+  updateMeasureReadout();
+}
+
+function clearMeasure() {
+  measurePoints = [];
+  syncMeasureGeometry();
+}
+
+function setMeasureMode(active) {
+  measureMode = !!active;
+  if (measureToggleEl) {
+    measureToggleEl.classList.toggle("active", measureMode);
+    measureToggleEl.setAttribute("aria-pressed", measureMode ? "true" : "false");
+  }
+  updateMeasureReadout();
+}
+
+function addMeasurePoint(latlng) {
+  measurePoints.push(latlng);
+  syncMeasureGeometry();
+}
+
+function addMeasureControl() {
+  if (!map || !window.L) return;
+  measureLayerGroup = L.layerGroup().addTo(map);
+  const measureControl = L.control({ position: "bottomleft" });
+  measureControl.onAdd = () => {
+    const container = L.DomUtil.create("div", "leaflet-bar measure-control");
+    const toggle = L.DomUtil.create("button", "measure-toggle", container);
+    toggle.type = "button";
+    toggle.textContent = "Measure";
+    toggle.setAttribute("aria-label", "Toggle map measure tool");
+    toggle.setAttribute("aria-pressed", "false");
+
+    const clear = L.DomUtil.create("button", "measure-clear", container);
+    clear.type = "button";
+    clear.textContent = "Clear";
+    clear.setAttribute("aria-label", "Clear measured path");
+
+    const readout = L.DomUtil.create("div", "measure-readout", container);
+    readout.textContent = "Off";
+
+    L.DomEvent.disableClickPropagation(container);
+    L.DomEvent.on(toggle, "click", () => setMeasureMode(!measureMode));
+    L.DomEvent.on(clear, "click", () => clearMeasure());
+
+    measureToggleEl = toggle;
+    measureReadoutEl = readout;
+    return container;
+  };
+  measureControl.addTo(map);
 }
 
 function applyStepState(cardEl, stateEl, state, label) {
@@ -160,7 +287,12 @@ function initMap() {
     attribution: "&copy; OpenStreetMap contributors"
   }).addTo(map);
   map.setView([20, 0], 2);
+  addMeasureControl();
   map.on("click", (e) => {
+    if (measureMode) {
+      addMeasurePoint(e.latlng);
+      return;
+    }
     probeLatLng = { lat: e.latlng.lat, lon: e.latlng.lng };
     if (!mapProbeMarker) {
       mapProbeMarker = L.circleMarker(e.latlng, {

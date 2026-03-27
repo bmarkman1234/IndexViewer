@@ -333,7 +333,7 @@ button:hover {
 
 .canvases {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.75fr);
   gap: 12px;
   height: 100%;
   min-height: 0;
@@ -466,6 +466,53 @@ button:hover {
   margin-bottom: 0;
   padding: 0.35rem 0.45rem;
   font-size: 0.72rem;
+}
+
+.measure-control {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 4px;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #111111;
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.measure-control button {
+  width: auto;
+  margin: 0;
+  padding: 0.22rem 0.45rem;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  border-radius: 5px;
+}
+
+.measure-toggle {
+  background: #ffffff;
+  color: #111111;
+  border: 1px solid #111111;
+}
+
+.measure-toggle.active {
+  background: #111111;
+  color: #ffffff;
+}
+
+.measure-clear {
+  background: #ffffff;
+  color: #111111;
+  border: 1px solid #111111;
+}
+
+.measure-readout {
+  grid-column: 1 / -1;
+  border: 1px solid #d0d0d0;
+  border-radius: 5px;
+  background: #ffffff;
+  padding: 0.18rem 0.35rem;
+  font-size: 0.72rem;
+  color: #111111;
 }
 
 .map-stage .status {
