@@ -4,7 +4,7 @@ A lightweight web app for calculating and comparing raster indices. https://bmar
 
 ## Quick Start
 
-1. Open `index.html`.
+1. Open the site: [IndexViewer](https://bmarkman1234.github.io/IndexViewer/)
 2. Upload raster bands.
 3. Set aliases for each band.
 4. Enter **Index label** and formula.
