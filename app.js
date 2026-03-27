@@ -989,13 +989,7 @@ function renderAliasEditor() {
 
 function renderFormulaHint() {
   if (!formulaHint) return;
-  const names = [...bandStore.keys()];
-  if (names.length === 0) {
-    formulaHint.textContent = "";
-    return;
-  }
-  const aliasRefs = [...aliasStore.entries()].map(([raw, alias]) => `{${alias}}=[${raw}]`).join(", ");
-  formulaHint.textContent = `Aliases: ${aliasRefs}. Helpers: ${Object.keys(rasterFns).join(", ")}. Constants: ${Object.keys(rasterConsts).join(", ")}.`;
+  formulaHint.textContent = "";
 }
 
 function renderPreview() {
