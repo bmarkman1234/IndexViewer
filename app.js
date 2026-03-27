@@ -1,11 +1,14 @@
 const fileInput = document.getElementById("bandFiles");
-const statusLine = document.getElementById("statusLine");
-const bandList = document.getElementById("bandList");
+const statusStep1 = document.getElementById("statusStep1");
+const statusStep2 = document.getElementById("statusStep2");
+const statusStep3 = document.getElementById("statusStep3");
+const statusStep4 = document.getElementById("statusStep4");
 const bandAliasList = document.getElementById("bandAliasList");
 const indexLabel = document.getElementById("indexLabel");
 const formulaInput = document.getElementById("formulaInput");
 const formulaHint = document.getElementById("formulaHint");
 const computeBtn = document.getElementById("computeBtn");
+const reviewBandsOkBtn = document.getElementById("reviewBandsOkBtn");
 const workflowProgressText = document.getElementById("workflowProgressText");
 const workflowProgressFill = document.getElementById("workflowProgressFill");
 const newIndexBtn = document.getElementById("newIndexBtn");
@@ -22,6 +25,9 @@ const showSnapshotBtn = document.getElementById("showSnapshotBtn");
 const deleteSnapshotBtn = document.getElementById("deleteSnapshotBtn");
 const compareBlendInput = document.getElementById("compareBlend");
 const compareBlendValue = document.getElementById("compareBlendValue");
+const compareBlendControl = document.getElementById("compareBlendControl");
+const vectorFileInput = document.getElementById("vectorFileInput");
+const clearVectorBtn = document.getElementById("clearVectorBtn");
 
 const previewCanvas = document.getElementById("previewCanvas");
 const previewCtx = previewCanvas.getContext("2d");
@@ -44,12 +50,14 @@ let workingGeoBounds = null;
 let map = null;
 let mapBaseOverlay = null;
 let mapCompareOverlay = null;
+let mapVectorOverlay = null;
 let mapProbeMarker = null;
 let overlayOpacity = 0.7;
 let compareBlend = 0.5;
 let probeLatLng = null;
 let snapshotCounter = 0;
 let newIndexCyclePending = false;
+let reviewBandsAccepted = false;
 const snapshotStore = [];
 
 const rasterFns = {
@@ -70,8 +78,15 @@ const rasterConsts = {
   E: Math.E
 };
 
-function setStatus(text) {
-  statusLine.textContent = text;
+function setStatus(text, step = 1) {
+  const stepStatusMap = {
+    1: statusStep1,
+    2: statusStep2,
+    3: statusStep3,
+    4: statusStep4
+  };
+  const target = stepStatusMap[step] || statusStep1;
+  if (target) target.textContent = text;
 }
 
 function applyStepState(cardEl, stateEl, state, label) {
@@ -94,6 +109,7 @@ function updateWorkflowProgress() {
     hasBands &&
     aliasStore.size === bandStore.size &&
     aliasConfirmedStore.size === bandStore.size &&
+    reviewBandsAccepted &&
     [...aliasStore.values()].every((alias) => alias.trim().length > 0);
   const hasSavedSnapshots = snapshotStore.length > 0;
   const hasComputed = hasSavedSnapshots && !newIndexCyclePending;
@@ -115,11 +131,11 @@ function startNewIndexCycle() {
   bandStore.clear();
   aliasStore.clear();
   aliasConfirmedStore.clear();
+  reviewBandsAccepted = false;
   workingWidth = 0;
   workingHeight = 0;
   workingGeoBounds = null;
   if (fileInput) fileInput.value = "";
-  renderBandList();
   renderAliasEditor();
   renderFormulaHint();
   previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
@@ -133,7 +149,7 @@ function startNewIndexCycle() {
   newIndexCyclePending = true;
   updateWorkflowProgress();
   if (indexLabel) indexLabel.focus();
-  setStatus("Reset to Step 1. Upload bands to start a new index calculation. Saved indices remain in Step 4.");
+  setStatus("Reset to Step 1. Upload bands to start a new index calculation. Saved indices remain in Step 4.", 1);
 }
 
 function initMap() {
@@ -174,8 +190,12 @@ function setCompareBlendFromInput() {
   const pct = Math.max(0, Math.min(100, Number(compareBlendInput.value || 50)));
   compareBlend = pct / 100;
   if (compareBlendValue) compareBlendValue.textContent = `${Math.round(pct)}%`;
-  // Visual-only blend: pixel value sampling remains based on saved snapshot data.
   applyMapOverlayOpacity();
+}
+
+function updateBlendControlVisibility() {
+  if (!compareBlendControl) return;
+  compareBlendControl.style.display = snapshotStore.length > 1 ? "block" : "none";
 }
 
 function clearComparisonOverlay() {
@@ -183,6 +203,19 @@ function clearComparisonOverlay() {
     map.removeLayer(mapCompareOverlay);
   }
   mapCompareOverlay = null;
+}
+
+function clearVectorOverlay() {
+  if (map && mapVectorOverlay) {
+    map.removeLayer(mapVectorOverlay);
+  }
+  mapVectorOverlay = null;
+  updateClearVectorButtonVisibility();
+}
+
+function updateClearVectorButtonVisibility() {
+  if (!clearVectorBtn) return;
+  clearVectorBtn.style.display = mapVectorOverlay ? "block" : "none";
 }
 
 function applyMapOverlayOpacity() {
@@ -193,6 +226,132 @@ function applyMapOverlayOpacity() {
     return;
   }
   mapBaseOverlay.setOpacity(overlayOpacity);
+}
+
+function confirmReviewBands() {
+  if (bandStore.size === 0) {
+    setStatus("Upload bands first, then confirm aliases in Step 2.", 2);
+    return;
+  }
+  const allAliasesReady =
+    aliasStore.size === bandStore.size && [...aliasStore.values()].every((alias) => alias && alias.trim().length > 0);
+  if (!allAliasesReady) {
+    setStatus("Please set aliases for all bands before confirming.", 2);
+    return;
+  }
+  bandStore.forEach((_, rawName) => aliasConfirmedStore.add(rawName));
+  reviewBandsAccepted = true;
+  setStatus("Aliases reviewed and confirmed.", 2);
+  updateWorkflowProgress();
+}
+
+function normalizeGeoJson(input) {
+  if (!input) return null;
+  if (Array.isArray(input)) {
+    const features = input.flatMap((item) => (item && item.features ? item.features : []));
+    return { type: "FeatureCollection", features };
+  }
+  return input;
+}
+
+function addVectorOverlay(geojson, sourceName) {
+  initMap();
+  if (!map) return;
+  const normalized = normalizeGeoJson(geojson);
+  if (!normalized || !normalized.features || normalized.features.length === 0) {
+    setStatus(`No features found in "${sourceName}".`, 4);
+    return;
+  }
+
+  clearVectorOverlay();
+  mapVectorOverlay = L.geoJSON(normalized, {
+    style: {
+      color: "#111111",
+      weight: 2,
+      opacity: 0.9,
+      fillOpacity: 0.05
+    },
+    pointToLayer: (feature, latlng) =>
+      L.circleMarker(latlng, {
+        radius: 4,
+        color: "#111111",
+        weight: 1,
+        fillColor: "#ffffff",
+        fillOpacity: 0.9
+      })
+  }).addTo(map);
+  updateClearVectorButtonVisibility();
+
+  try {
+    const bounds = mapVectorOverlay.getBounds();
+    if (bounds && bounds.isValid()) {
+      map.fitBounds(bounds, { padding: [20, 20] });
+    }
+  } catch (err) {
+    // No-op: keep current map extent if bounds cannot be computed.
+  }
+  setStatus(`Loaded vector overlay: ${sourceName}`, 4);
+}
+
+function parseKmlTextToGeoJson(kmlText) {
+  if (!window.toGeoJSON) {
+    throw new Error("KML parser library is not available.");
+  }
+  const parser = new DOMParser();
+  const kmlDoc = parser.parseFromString(kmlText, "text/xml");
+  return toGeoJSON.kml(kmlDoc);
+}
+
+async function parseKmzToGeoJson(arrayBuffer) {
+  if (!window.JSZip) {
+    throw new Error("KMZ parser library is not available.");
+  }
+  const zip = await JSZip.loadAsync(arrayBuffer);
+  const kmlEntryName = Object.keys(zip.files).find((name) => name.toLowerCase().endsWith(".kml"));
+  if (!kmlEntryName) {
+    throw new Error("KMZ file does not contain a .kml document.");
+  }
+  const kmlText = await zip.files[kmlEntryName].async("text");
+  return parseKmlTextToGeoJson(kmlText);
+}
+
+async function parseShapefileZipToGeoJson(arrayBuffer) {
+  if (typeof shp !== "function") {
+    throw new Error("Shapefile parser library is not available.");
+  }
+  return shp(arrayBuffer);
+}
+
+async function handleVectorFileUpload(file) {
+  if (!file) return;
+  const name = file.name || "uploaded file";
+  const lower = name.toLowerCase();
+
+  try {
+    if (lower.endsWith(".kml")) {
+      const text = await file.text();
+      const geojson = parseKmlTextToGeoJson(text);
+      addVectorOverlay(geojson, name);
+      return;
+    }
+    if (lower.endsWith(".kmz")) {
+      const buffer = await file.arrayBuffer();
+      const geojson = await parseKmzToGeoJson(buffer);
+      addVectorOverlay(geojson, name);
+      return;
+    }
+    if (lower.endsWith(".zip")) {
+      const buffer = await file.arrayBuffer();
+      const geojson = await parseShapefileZipToGeoJson(buffer);
+      addVectorOverlay(geojson, name);
+      return;
+    }
+    setStatus("Unsupported vector file type. Use .kml, .kmz, or zipped shapefile (.zip).", 4);
+  } catch (err) {
+    setStatus(`Could not load vector overlay "${name}": ${err.message}`, 4);
+  } finally {
+    if (vectorFileInput) vectorFileInput.value = "";
+  }
 }
 
 function isLikelyLatLonBounds(bounds) {
@@ -293,7 +452,7 @@ function updateMapOverlay(imageUrl, geoBounds) {
       mapBaseOverlay = null;
     }
     clearComparisonOverlay();
-    setStatus("Index computed, but map overlay needs georeferenced bounds (WGS84 or EPSG metadata).");
+    setStatus("Index computed, but map overlay needs georeferenced bounds (WGS84 or EPSG metadata).", 3);
     return;
   }
 
@@ -404,16 +563,16 @@ function triggerDownload(url, filename) {
 
 function exportPixelProbeCsv() {
   if (!probeLatLng) {
-    setStatus("Click on the map first to choose a pixel for CSV export.");
+    setStatus("Click on the map first to choose a pixel for CSV export.", 3);
     return;
   }
   if (snapshotStore.length === 0) {
-    setStatus("No saved indices available for pixel value export.");
+    setStatus("No saved indices available for pixel value export.", 3);
     return;
   }
 
   const rows = [
-    ["index_label", "lat", "lon", "pixel_x", "pixel_y", "pixel_value", "status"].join(",")
+    ["index_name", "lat", "lon", "pixel_x", "pixel_y", "pixel_value", "status"].join(",")
   ];
   snapshotStore.forEach((snap) => {
     const sample = sampleSnapshotAtLatLon(snap, probeLatLng.lat, probeLatLng.lon);
@@ -450,7 +609,7 @@ function exportPixelProbeCsv() {
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
   triggerDownload(url, `pixel_value_${stamp}.csv`);
   URL.revokeObjectURL(url);
-  setStatus("Pixel value CSV exported.");
+  setStatus("Pixel value CSV exported.", 3);
 }
 
 function updatePixelProbePanel() {
@@ -500,6 +659,7 @@ function renderSnapshotSelect() {
     option.textContent = snap.indexLabel;
     snapshotSelect.appendChild(option);
   });
+  updateBlendControlVisibility();
   updateWorkflowProgress();
 }
 
@@ -526,7 +686,7 @@ function saveSnapshot(imageUrl, values, label, formula, min, max) {
 async function showSnapshotById(snapshotId) {
   const snap = snapshotStore.find((s) => s.id === snapshotId);
   if (!snap) {
-    setStatus("Selected index was not found.");
+    setStatus("Selected index was not found.", 4);
     return;
   }
 
@@ -544,24 +704,24 @@ async function showSnapshotById(snapshotId) {
     const prev = snapshotStore[snapshotIdx - 1];
     setStatus(
       `Showing "${snap.indexLabel}" with change slider against previous "${prev.indexLabel}". Range: ${snap.min.toFixed(4)} to ${snap.max.toFixed(4)}.`
-    );
+    , 4);
     updatePixelProbePanel();
     return;
   }
-  setStatus(`Showing index "${snap.indexLabel}". Range: ${snap.min.toFixed(4)} to ${snap.max.toFixed(4)}.`);
+  setStatus(`Showing index "${snap.indexLabel}". Range: ${snap.min.toFixed(4)} to ${snap.max.toFixed(4)}.`, 4);
   updatePixelProbePanel();
 }
 
 async function deleteSelectedSnapshot() {
   const selectedId = snapshotSelect && snapshotSelect.value ? snapshotSelect.value : "";
   if (!selectedId) {
-    setStatus("No index selected to delete.");
+    setStatus("No index selected to delete.", 4);
     return;
   }
 
   const idx = snapshotStore.findIndex((s) => s.id === selectedId);
   if (idx < 0) {
-    setStatus("Selected index was not found.");
+    setStatus("Selected index was not found.", 4);
     return;
   }
 
@@ -576,7 +736,7 @@ async function deleteSelectedSnapshot() {
     }
     clearComparisonOverlay();
     updatePixelProbePanel();
-    setStatus(`Deleted "${removed.indexLabel}". No saved indices remain.`);
+    setStatus(`Deleted "${removed.indexLabel}". No saved indices remain.`, 4);
     return;
   }
 
@@ -585,9 +745,9 @@ async function deleteSelectedSnapshot() {
   if (snapshotSelect) snapshotSelect.value = next.id;
   try {
     await showSnapshotById(next.id);
-    setStatus(`Deleted "${removed.indexLabel}". Showing "${next.indexLabel}".`);
+    setStatus(`Deleted "${removed.indexLabel}". Showing "${next.indexLabel}".`, 4);
   } catch (err) {
-    setStatus(`Deleted "${removed.indexLabel}", but could not load the next index: ${err.message}`);
+    setStatus(`Deleted "${removed.indexLabel}", but could not load the next index: ${err.message}`, 4);
   }
 }
 
@@ -788,15 +948,6 @@ async function readImageBand(file) {
   }
 }
 
-function renderBandList() {
-  bandList.innerHTML = "";
-  [...bandStore.entries()].forEach(([band, payload]) => {
-    const li = document.createElement("li");
-    li.textContent = `${band}: ${payload.width} x ${payload.height}`;
-    bandList.appendChild(li);
-  });
-}
-
 function renderAliasEditor() {
   bandAliasList.innerHTML = "";
   [...bandStore.keys()].forEach((rawName) => {
@@ -816,16 +967,18 @@ function renderAliasEditor() {
       const proposed = input.value.trim();
       if (!isValidAlias(proposed)) {
         input.value = aliasStore.get(rawName) || "";
-        setStatus("Alias cannot be empty.");
+        setStatus("Alias cannot be empty.", 2);
         return;
       }
       const normalized = ensureUniqueAlias(proposed, rawName);
       if (normalized !== proposed) {
         input.value = normalized;
-        setStatus(`Alias "${proposed}" was already in use. Renamed to "${normalized}".`);
+        setStatus(`Alias "${proposed}" was already in use. Renamed to "${normalized}".`, 2);
       }
       aliasStore.set(rawName, normalized);
       aliasConfirmedStore.add(rawName);
+      reviewBandsAccepted = false;
+      setStatus("Alias updated. Press OK when done.", 2);
       renderFormulaHint();
       updateWorkflowProgress();
     });
@@ -835,13 +988,14 @@ function renderAliasEditor() {
 }
 
 function renderFormulaHint() {
+  if (!formulaHint) return;
   const names = [...bandStore.keys()];
   if (names.length === 0) {
-    formulaHint.textContent = "Upload bands to enable raster algebra.";
+    formulaHint.textContent = "";
     return;
   }
   const aliasRefs = [...aliasStore.entries()].map(([raw, alias]) => `{${alias}}=[${raw}]`).join(", ");
-  formulaHint.textContent = `Aliases: ${aliasRefs}. Use alias directly (e.g., B4) or [raw name]. {alias} is optional. Helpers: ${Object.keys(rasterFns).join(", ")}. Constants: ${Object.keys(rasterConsts).join(", ")}.`;
+  formulaHint.textContent = `Aliases: ${aliasRefs}. Helpers: ${Object.keys(rasterFns).join(", ")}. Constants: ${Object.keys(rasterConsts).join(", ")}.`;
 }
 
 function renderPreview() {
@@ -970,13 +1124,13 @@ function computeIndex() {
   const label = indexLabel.value.trim() || "Custom Index";
   const formula = formulaInput.value.trim();
   if (!formula) {
-    setStatus("Enter a raster algebra formula.");
+    setStatus("Enter a raster algebra formula.", 3);
     updateWorkflowProgress();
     return;
   }
 
   if (bandStore.size === 0) {
-    setStatus("Upload at least one band first.");
+    setStatus("Upload at least one band first.", 3);
     updateWorkflowProgress();
     return;
   }
@@ -985,7 +1139,7 @@ function computeIndex() {
   try {
     compiled = compileRasterFormula(formula);
   } catch (err) {
-    setStatus(err.message);
+    setStatus(err.message, 3);
     updateWorkflowProgress();
     return;
   }
@@ -1022,7 +1176,7 @@ function computeIndex() {
     try {
       value = evaluator(...evalArgs);
     } catch (err) {
-      setStatus(`Formula evaluation failed near pixel ${i}: ${err.message}`);
+      setStatus(`Formula evaluation failed near pixel ${i}: ${err.message}`, 3);
       updateWorkflowProgress();
       return;
     }
@@ -1052,7 +1206,7 @@ function computeIndex() {
   showComparisonForSnapshot(snapshotId);
   setStatus(
     `${label} computed on ${workingWidth} x ${workingHeight} using "${formula}". Range: ${min.toFixed(4)} to ${max.toFixed(4)}. Saved to indices (${snapshotStore.length}).`
-  );
+  , 3);
   updateWorkflowProgress();
 }
 
@@ -1077,23 +1231,23 @@ async function ingestFile(file) {
 
 async function handleFiles(files) {
   if (!files || files.length === 0) return;
-  setStatus("Reading uploaded files...");
+  setStatus("Reading uploaded files...", 1);
 
   bandStore.clear();
   aliasStore.clear();
   aliasConfirmedStore.clear();
+  reviewBandsAccepted = false;
   for (let i = 0; i < files.length; i += 1) {
     try {
       await ingestFile(files[i]);
     } catch (err) {
       console.error(err);
-      setStatus(`Error reading ${files[i].name}.`);
+      setStatus(`Error reading ${files[i].name}.`, 1);
     }
   }
 
   if (bandStore.size === 0) {
-    setStatus("No readable raster bands were found in the selected files.");
-    renderBandList();
+    setStatus("No readable raster bands were found in the selected files.", 1);
     renderAliasEditor();
     renderFormulaHint();
     updateWorkflowProgress();
@@ -1115,21 +1269,25 @@ async function handleFiles(files) {
     });
   });
 
-  renderBandList();
   renderAliasEditor();
   renderFormulaHint();
   renderPreview();
   indexCtx.clearRect(0, 0, indexCanvas.width, indexCanvas.height);
-  setStatus(`Loaded ${bandStore.size} bands. Rename aliases as needed, then calculate with alias-based raster algebra.`);
+  setStatus(`Loaded ${bandStore.size} bands. Continue to Step 2 to set aliases.`, 1);
   updateWorkflowProgress();
 }
 
 initMap();
 setOverlayOpacityFromInput();
 setCompareBlendFromInput();
+updateBlendControlVisibility();
+updateClearVectorButtonVisibility();
 
 if (overlayOpacityInput) {
   overlayOpacityInput.addEventListener("change", setOverlayOpacityFromInput);
+}
+if (reviewBandsOkBtn) {
+  reviewBandsOkBtn.addEventListener("click", confirmReviewBands);
 }
 if (compareBlendInput) {
   compareBlendInput.addEventListener("input", setCompareBlendFromInput);
@@ -1138,13 +1296,13 @@ if (showSnapshotBtn) {
   showSnapshotBtn.addEventListener("click", async () => {
     const id = snapshotSelect ? snapshotSelect.value : "";
     if (!id) {
-      setStatus("No index selected yet.");
+      setStatus("No index selected yet.", 4);
       return;
     }
     try {
       await showSnapshotById(id);
     } catch (err) {
-      setStatus(`Could not show index: ${err.message}`);
+      setStatus(`Could not show index: ${err.message}`, 4);
     }
   });
 }
@@ -1163,12 +1321,24 @@ if (snapshotSelect) {
     try {
       await showSnapshotById(id);
     } catch (err) {
-      setStatus(`Could not show index: ${err.message}`);
+      setStatus(`Could not show index: ${err.message}`, 4);
     }
   });
 }
 if (exportProbeCsvBtn) {
   exportProbeCsvBtn.addEventListener("click", exportPixelProbeCsv);
+}
+if (vectorFileInput) {
+  vectorFileInput.addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0] ? e.target.files[0] : null;
+    handleVectorFileUpload(file);
+  });
+}
+if (clearVectorBtn) {
+  clearVectorBtn.addEventListener("click", () => {
+    clearVectorOverlay();
+    setStatus("Vector overlay cleared.", 4);
+  });
 }
 
 fileInput.addEventListener("change", (e) => {

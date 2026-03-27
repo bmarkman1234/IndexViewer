@@ -7,7 +7,7 @@ A lightweight web app for calculating and comparing raster indices. https://bmar
 1. Open the site: [IndexViewer](https://bmarkman1234.github.io/IndexViewer/)
 2. Upload raster bands.
 3. In Workflow **Step 2**, set aliases for each band.
-4. Enter **Index label** and formula.
+4. Enter **Index name** and formula.
 5. Click **Calculate Index**.
 6. Use **Saved indices** to compare results.
 7. Click the map to view pixel values.
@@ -22,4 +22,4 @@ A lightweight web app for calculating and comparing raster indices. https://bmar
 
 ## CSV Fields
 
-`index_label`, `lat`, `lon`, `pixel_x`, `pixel_y`, `pixel_value`, `status`
+`index_name`, `lat`, `lon`, `pixel_x`, `pixel_y`, `pixel_value`, `status`

@@ -39,7 +39,6 @@
         <section class="controls" aria-live="polite">
           <div class="controls-head">
             <h2>Workflow</h2>
-            <button id="newIndexBtn" type="button" class="secondary-btn compact-btn">New Index</button>
           </div>
           <div class="workflow-progress">
             <p id="workflowProgressText" class="small">0 of 4 steps complete</p>
@@ -60,7 +59,7 @@
               Upload one or more raster bands (`.tif/.tiff/.png/.jpg`).
             </p>
             <input id="bandFiles" type="file" multiple accept=".tif,.tiff,.png,.jpg,.jpeg" />
-            <p id="statusLine" class="status">Waiting for files...</p>
+            <p id="statusStep1" class="status">Waiting for files...</p>
           </div>
 
           <div id="step2" class="workflow-step">
@@ -72,8 +71,9 @@
               <span id="step2State" class="step-state pending">Pending</span>
             </div>
             <p class="small">Assign aliases to each band in this step.</p>
-            <ul id="bandList"></ul>
             <div id="bandAliasList" class="alias-list"></div>
+            <button id="reviewBandsOkBtn" type="button" class="secondary-btn">OK</button>
+            <p id="statusStep2" class="status">No updates yet.</p>
           </div>
 
           <div id="step3" class="workflow-step">
@@ -84,23 +84,18 @@
               </div>
               <span id="step3State" class="step-state pending">Pending</span>
             </div>
-            <label for="indexLabel">Index label</label>
+            <label for="indexLabel">Index name</label>
             <input id="indexLabel" type="text"/>
 
             <label for="formulaInput">Index Formula</label>
             <input id="formulaInput" type="text" />
-            <details class="formula-help">
-              <summary>Formula Help (Aliases, Helpers, Constants)</summary>
-              <p id="formulaHint" class="small">
-                Rename each uploaded band with an alias, then use alias names in formulas.
-                Use alias names directly (for example, `B4`) or `[raw file name]` for direct references.
-              </p>
-              <p class="small">
-                Need index ideas? Browse formulas at
-                <a href="https://www.indexdatabase.de/" target="_blank" rel="noopener noreferrer">IndexDatabase</a>.
-              </p>
-            </details>
-            <button id="computeBtn" type="button">Calculate Index</button>
+            <p id="formulaHint" class="small"></p>
+            <p class="small">
+              Need index ideas? Browse formulas at
+              <a href="https://www.indexdatabase.de/" target="_blank" rel="noopener noreferrer">IndexDatabase</a>.
+            </p>
+            <button id="computeBtn" type="button">Calculate Index And Show On Map</button>
+            <p id="statusStep3" class="status">No index calculated yet.</p>
           </div>
 
           <div id="step4" class="workflow-step">
@@ -111,11 +106,14 @@
               </div>
               <span id="step4State" class="step-state pending">Pending</span>
             </div>
-            <p class="small">Each calculation is saved using its index label so you can revisit and compare results.</p>
+            <p class="small">Each calculation is saved using its index name so you can revisit and compare results.</p>
+            <p class="small">Press <strong>New Index</strong> before computing another index you want to save and compare.</p>
             <label for="snapshotSelect">Saved indices</label>
             <select id="snapshotSelect"></select>
             <button id="showSnapshotBtn" type="button">Show Selected Index</button>
             <button id="deleteSnapshotBtn" type="button" class="secondary-btn">Delete Selected Index</button>
+            <button id="newIndexBtn" type="button" class="secondary-btn">New Index</button>
+            <p id="statusStep4" class="status">No saved indices yet.</p>
           </div>
         </section>
 
@@ -140,8 +138,13 @@
                 <option value="10">10%</option>
                 <option value="0">0%</option>
               </select>
-              <label for="compareBlend" class="small">Blend: <span id="compareBlendValue">50%</span></label>
-              <input id="compareBlend" type="range" min="0" max="100" step="1" value="50" />
+              <div id="compareBlendControl">
+                <label for="compareBlend" class="small">Blend: <span id="compareBlendValue">50%</span></label>
+                <input id="compareBlend" type="range" min="0" max="100" step="1" value="50" />
+              </div>
+              <label for="vectorFileInput" class="small">Add KML/KMZ/SHP ZIP</label>
+              <input id="vectorFileInput" type="file" accept=".kml,.kmz,.zip" />
+              <button id="clearVectorBtn" type="button" class="secondary-btn map-mini-btn">Clear Vector Overlay</button>
             </div>
             <div id="mapContainer" class="map-container" aria-label="Map with index overlay"></div>
           </div>
@@ -156,7 +159,7 @@
             <div id="pixelValuesList" class="pixel-values-list"></div>
             <canvas id="pixelTrendCanvas" width="360" height="180"></canvas>
             <p class="small">
-              CSV export includes `index_label`, `lat`, `lon`, `pixel_x`, `pixel_y`, `pixel_value`, and `status` (`ok` or `outside_extent`).
+              CSV export includes `index_name`, `lat`, `lon`, `pixel_x`, `pixel_y`, `pixel_value`, and `status` (`ok` or `outside_extent`).
             </p>
           </div>
         </article>
@@ -169,6 +172,9 @@
 
     <script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/proj4@2.11.0/dist/proj4.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tmcw/togeojson@5.8.1/dist/togeojson.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/shpjs@4.0.4/dist/shp.min.js"></script>
     <script
       src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
