@@ -31,7 +31,7 @@
       </a>
       <h1>IndexViewer</h1>
       <p>
-        A lightweight NDVI/NBR viewer for quick band-based index mapping, comparison, and pixel sampling
+        A lightweight tool for assessing regional change over time in vegetation health and fire damage
       </p>
     </header>
     <main class="viewer-layout">
@@ -75,10 +75,10 @@
               <span id="step2State" class="step-state pending">Pending</span>
             </div>
             <p id="bandUploadHint" class="small">Upload one file for each required role.</p>
-            <label for="nirBandFile">NIR Band</label>
-            <input id="nirBandFile" type="file" accept=".tif,.tiff,.png,.jpg,.jpeg" />
-            <label id="secondaryBandLabel" for="secondaryBandFile">Red Band</label>
-            <input id="secondaryBandFile" type="file" accept=".tif,.tiff,.png,.jpg,.jpeg" />
+            <label>NIR Band</label>
+            <input id="nirBandFile" type="file" accept=".tif,.tiff,.png,.jpg,.jpeg" aria-label="Upload NIR band" />
+            <label id="secondaryBandLabel">Red Band</label>
+            <input id="secondaryBandFile" type="file" accept=".tif,.tiff,.png,.jpg,.jpeg" aria-label="Upload secondary band" />
             <p id="statusStep2" class="status">Waiting for required band uploads.</p>
           </div>
 

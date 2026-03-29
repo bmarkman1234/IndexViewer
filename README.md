@@ -1,6 +1,6 @@
 # IndexViewer
 
-A lightweight NDVI/NBR viewer for quick band-based index mapping, comparison, and pixel sampling. https://bmarkman1234.github.io/IndexViewer/
+A lightweight tool for assessing regional change over time in vegetation health and fire damage. https://bmarkman1234.github.io/IndexViewer/
 
 ## Free Satellite Data Sources
 
@@ -39,9 +39,20 @@ Formulas used:
 
 ### Step 5: Pixel Value And CSV
 
-1. Click the map to sample pixel values for available indices.
-2. Export CSV from the Pixel Value panel.
-3. Optional: use the measure tool (bottom-left) and vector overlay upload (`.kml`, `.kmz`, `.zip` shapefile).
+1. If the Measure tool is on, click **Measure** to turn it off first.
+2. Click the map to sample pixel values for available indices.
+3. Export CSV from the Pixel Value panel.
+
+### Measurement Tool
+
+1. Use the **Measure** button in the bottom-left of the map to turn measuring on/off.
+2. In measure mode, click map points to create a path and view total distance.
+3. Click **Clear** to reset the measured path.
+4. Turn measure mode off before selecting pixel values.
+
+### Optional Overlay
+
+1. Upload vector overlays (`.kml`, `.kmz`, `.zip` shapefile) to view reference boundaries.
 
 ## CSV Fields
 
