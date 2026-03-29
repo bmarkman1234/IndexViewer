@@ -1,6 +1,6 @@
 # IndexViewer
 
-A lightweight web app for calculating and comparing raster indices. https://bmarkman1234.github.io/IndexViewer/
+A lightweight NDVI/NBR viewer for quick band-based index mapping, comparison, and pixel sampling. https://bmarkman1234.github.io/IndexViewer/
 
 ## Free Satellite Data Sources
 
@@ -9,21 +9,28 @@ A lightweight web app for calculating and comparing raster indices. https://bmar
 
 ## Workflow Steps
 
-### Step 1: Upload Bands
+### Step 1: Select Index
 
 1. Open the app in your browser.
-2. Upload one or more raster band files (`.tif`/`.tiff`).
+2. Choose `NDVI` or `NBR`.
+3. (Optional) Enter an index name.
+4. Click **OK**.
 
-### Step 2: Assign Band Aliases
+### Step 2: Upload Required Bands
 
-1. Rename each uploaded band with a short alias (example: `B4`, `B5`).
-2. Click **OK** in the Review Bands section after aliases are set.
+1. Upload a `NIR` band.
+2. Upload the second required band:
+   - `Red` for NDVI
+   - `SWIR2` for NBR
 
 ### Step 3: Create Index
 
-1. Enter an **Index name**.
-2. Enter an index formula using aliases (example: `(B5 - B4) / (B5 + B4)`).
-3. Click **Calculate Index And Show On Map**.
+1. Choose a color ramp.
+2. Click **Calculate Index And Show On Map**.
+
+Formulas used:
+- NDVI: `(NIR - Red) / (NIR + Red)`
+- NBR: `(NIR - SWIR2) / (NIR + SWIR2)`
 
 ### Step 4: Save And Compare
 
@@ -34,13 +41,7 @@ A lightweight web app for calculating and comparing raster indices. https://bmar
 
 1. Click the map to sample pixel values for available indices.
 2. Export CSV from the Pixel Value panel.
-
-## Formula Notes
-
-- Use alias names directly (example: `B5 - B4`).
-- You can also use raw names in brackets: `[file_name.tif]`.
-- Helpers: `abs`, `sqrt`, `pow`, `min`, `max`, `log`, `exp`, `sin`, `cos`, `tan`
-- Constants: `PI`, `E`
+3. Optional: use the measure tool (bottom-left) and vector overlay upload (`.kml`, `.kmz`, `.zip` shapefile).
 
 ## CSV Fields
 

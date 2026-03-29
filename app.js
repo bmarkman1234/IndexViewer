@@ -1,14 +1,17 @@
-const fileInput = document.getElementById("bandFiles");
 const statusStep1 = document.getElementById("statusStep1");
 const statusStep2 = document.getElementById("statusStep2");
 const statusStep3 = document.getElementById("statusStep3");
 const statusStep4 = document.getElementById("statusStep4");
-const bandAliasList = document.getElementById("bandAliasList");
 const indexLabel = document.getElementById("indexLabel");
-const formulaInput = document.getElementById("formulaInput");
+const indexTypeSelect = document.getElementById("indexTypeSelect");
+const step1OkBtn = document.getElementById("step1OkBtn");
+const nirBandFileInput = document.getElementById("nirBandFile");
+const secondaryBandFileInput = document.getElementById("secondaryBandFile");
+const secondaryBandLabel = document.getElementById("secondaryBandLabel");
+const bandUploadHint = document.getElementById("bandUploadHint");
+const rampSelect = document.getElementById("rampSelect");
 const formulaHint = document.getElementById("formulaHint");
 const computeBtn = document.getElementById("computeBtn");
-const reviewBandsOkBtn = document.getElementById("reviewBandsOkBtn");
 const workflowProgressText = document.getElementById("workflowProgressText");
 const workflowProgressFill = document.getElementById("workflowProgressFill");
 const newIndexBtn = document.getElementById("newIndexBtn");
@@ -64,8 +67,10 @@ let compareBlend = 0.5;
 let probeLatLng = null;
 let snapshotCounter = 0;
 let newIndexCyclePending = false;
-let reviewBandsAccepted = false;
+let step1Confirmed = false;
 const snapshotStore = [];
+const OVERLAY_MAX_EDGE = 1800;
+const OVERLAY_MAX_PIXELS = 2_000_000;
 
 const rasterFns = {
   abs: Math.abs,
@@ -83,6 +88,17 @@ const rasterFns = {
 const rasterConsts = {
   PI: Math.PI,
   E: Math.E
+};
+
+const rampOptionsByType = {
+  ndvi: [
+    { value: "ndvi-classic", label: "NDVI Classic" },
+    { value: "ndvi-contrast", label: "NDVI High Contrast" }
+  ],
+  nbr: [
+    { value: "nbr-burn", label: "NBR Burn Severity" },
+    { value: "nbr-diverging", label: "NBR Diverging" }
+  ]
 };
 
 function setStatus(text, step = 1) {
@@ -231,22 +247,18 @@ function applyStepState(cardEl, stateEl, state, label) {
 }
 
 function updateWorkflowProgress() {
-  const hasBands = bandStore.size > 0;
-  const aliasesReady =
-    hasBands &&
-    aliasStore.size === bandStore.size &&
-    aliasConfirmedStore.size === bandStore.size &&
-    reviewBandsAccepted &&
-    [...aliasStore.values()].every((alias) => alias.trim().length > 0);
+  const hasModeSelected = step1Confirmed && (getCurrentIndexType() === "ndvi" || getCurrentIndexType() === "nbr");
+  const secondRole = getSecondaryRoleKey();
+  const hasBands = bandStore.has("NIR") && bandStore.has(secondRole);
   const hasSavedSnapshots = snapshotStore.length > 0;
   const hasComputed = hasSavedSnapshots && !newIndexCyclePending;
   const hasSavedForCompare = hasSavedSnapshots && !newIndexCyclePending;
 
-  const completedCount = [hasBands, aliasesReady, hasComputed, hasSavedForCompare].filter(Boolean).length;
-  const firstIncomplete = !hasBands ? 1 : !aliasesReady ? 2 : !hasComputed ? 3 : !hasSavedForCompare ? 4 : 0;
+  const completedCount = [hasModeSelected, hasBands, hasComputed, hasSavedForCompare].filter(Boolean).length;
+  const firstIncomplete = !hasModeSelected ? 1 : !hasBands ? 2 : !hasComputed ? 3 : !hasSavedForCompare ? 4 : 0;
 
-  applyStepState(step1, step1State, hasBands ? "complete" : firstIncomplete === 1 ? "in-progress" : "pending", hasBands ? "Complete" : firstIncomplete === 1 ? "In Progress" : "Pending");
-  applyStepState(step2, step2State, aliasesReady ? "complete" : firstIncomplete === 2 ? "in-progress" : "pending", aliasesReady ? "Complete" : firstIncomplete === 2 ? "In Progress" : "Pending");
+  applyStepState(step1, step1State, hasModeSelected ? "complete" : firstIncomplete === 1 ? "in-progress" : "pending", hasModeSelected ? "Complete" : firstIncomplete === 1 ? "In Progress" : "Pending");
+  applyStepState(step2, step2State, hasBands ? "complete" : firstIncomplete === 2 ? "in-progress" : "pending", hasBands ? "Complete" : firstIncomplete === 2 ? "In Progress" : "Pending");
   applyStepState(step3, step3State, hasComputed ? "complete" : firstIncomplete === 3 ? "in-progress" : "pending", hasComputed ? "Complete" : firstIncomplete === 3 ? "In Progress" : "Pending");
   applyStepState(step4, step4State, hasSavedForCompare ? "complete" : firstIncomplete === 4 ? "in-progress" : "pending", hasSavedForCompare ? "Complete" : firstIncomplete === 4 ? "In Progress" : "Pending");
 
@@ -254,16 +266,61 @@ function updateWorkflowProgress() {
   if (workflowProgressFill) workflowProgressFill.style.width = `${(completedCount / 4) * 100}%`;
 }
 
+function confirmStep1Selection() {
+  step1Confirmed = true;
+  setStatus(`Selected ${getCurrentIndexType().toUpperCase()}. Continue to Step 2 uploads.`, 1);
+  updateWorkflowProgress();
+}
+
+function getCurrentIndexType() {
+  if (!indexTypeSelect) return "ndvi";
+  return indexTypeSelect.value === "nbr" ? "nbr" : "ndvi";
+}
+
+function getSecondaryRoleKey(indexType = getCurrentIndexType()) {
+  return indexType === "nbr" ? "SWIR2" : "RED";
+}
+
+function getIndexFormulaText(indexType = getCurrentIndexType()) {
+  if (indexType === "nbr") return "(NIR - SWIR2) / (NIR + SWIR2)";
+  return "(NIR - Red) / (NIR + Red)";
+}
+
+function updateRampSelect() {
+  if (!rampSelect) return;
+  const indexType = getCurrentIndexType();
+  const options = rampOptionsByType[indexType] || rampOptionsByType.ndvi;
+  const previous = rampSelect.value;
+  rampSelect.innerHTML = "";
+  options.forEach((entry) => {
+    const option = document.createElement("option");
+    option.value = entry.value;
+    option.textContent = entry.label;
+    rampSelect.appendChild(option);
+  });
+  const stillValid = options.some((entry) => entry.value === previous);
+  rampSelect.value = stillValid ? previous : options[0].value;
+}
+
+function updateStep3ModeUi() {
+  const indexType = getCurrentIndexType();
+  const secondaryRoleKey = getSecondaryRoleKey(indexType);
+  if (secondaryBandLabel) secondaryBandLabel.textContent = secondaryRoleKey === "SWIR2" ? "SWIR2 Band" : "Red Band";
+  if (bandUploadHint) bandUploadHint.textContent = secondaryRoleKey === "SWIR2"
+    ? "Upload one NIR band and one SWIR2 band for NBR."
+    : "Upload one NIR band and one Red band for NDVI.";
+  updateRampSelect();
+  if (!formulaHint) return;
+  formulaHint.textContent = `${indexType.toUpperCase()} formula: ${getIndexFormulaText(indexType)}`;
+}
+
 function startNewIndexCycle() {
   bandStore.clear();
-  aliasStore.clear();
-  aliasConfirmedStore.clear();
-  reviewBandsAccepted = false;
   workingWidth = 0;
   workingHeight = 0;
   workingGeoBounds = null;
-  if (fileInput) fileInput.value = "";
-  renderAliasEditor();
+  if (nirBandFileInput) nirBandFileInput.value = "";
+  if (secondaryBandFileInput) secondaryBandFileInput.value = "";
   renderFormulaHint();
   previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
   indexCtx.clearRect(0, 0, indexCanvas.width, indexCanvas.height);
@@ -274,9 +331,11 @@ function startNewIndexCycle() {
   clearComparisonOverlay();
 
   newIndexCyclePending = true;
+  step1Confirmed = false;
   updateWorkflowProgress();
   if (indexLabel) indexLabel.focus();
-  setStatus("Reset to Step 1. Upload bands to start a new index calculation. Saved indices remain in Step 4.", 1);
+  setStatus("Reset to Step 1. Choose index type, then upload required bands in Step 2.", 1);
+  setStatus("Waiting for required band uploads.", 2);
 }
 
 function initMap() {
@@ -361,20 +420,7 @@ function applyMapOverlayOpacity() {
 }
 
 function confirmReviewBands() {
-  if (bandStore.size === 0) {
-    setStatus("Upload bands first, then confirm aliases in Step 2.", 2);
-    return;
-  }
-  const allAliasesReady =
-    aliasStore.size === bandStore.size && [...aliasStore.values()].every((alias) => alias && alias.trim().length > 0);
-  if (!allAliasesReady) {
-    setStatus("Please set aliases for all bands before confirming.", 2);
-    return;
-  }
-  bandStore.forEach((_, rawName) => aliasConfirmedStore.add(rawName));
-  reviewBandsAccepted = true;
-  setStatus("Aliases reviewed and confirmed.", 2);
-  updateWorkflowProgress();
+  // Legacy no-op: alias review removed in simplified NDVI/NBR workflow.
 }
 
 function normalizeGeoJson(input) {
@@ -791,6 +837,13 @@ function renderSnapshotSelect() {
     option.textContent = snap.indexLabel;
     snapshotSelect.appendChild(option);
   });
+  if (snapshotStore.length === 0) {
+    setStatus("No saved indices yet.", 4);
+  } else if (snapshotStore.length === 1) {
+    setStatus(`1 saved index available: "${snapshotStore[0].indexLabel}".`, 4);
+  } else {
+    setStatus(`${snapshotStore.length} saved indices available for comparison.`, 4);
+  }
   updateBlendControlVisibility();
   updateWorkflowProgress();
 }
@@ -822,13 +875,6 @@ async function showSnapshotById(snapshotId) {
     return;
   }
 
-  const img = new Image();
-  img.src = snap.imageUrl;
-  await img.decode();
-  indexCanvas.width = snap.width;
-  indexCanvas.height = snap.height;
-  indexCtx.clearRect(0, 0, snap.width, snap.height);
-  indexCtx.drawImage(img, 0, 0, snap.width, snap.height);
   updateMapOverlay(snap.imageUrl, snap.geoBounds);
   showComparisonForSnapshot(snapshotId);
   const snapshotIdx = snapshotStore.findIndex((s) => s.id === snapshotId);
@@ -858,6 +904,10 @@ async function deleteSelectedSnapshot() {
   }
 
   const [removed] = snapshotStore.splice(idx, 1);
+  const removedBlobUrl =
+    removed && typeof removed.imageUrl === "string" && removed.imageUrl.startsWith("blob:")
+      ? removed.imageUrl
+      : null;
   renderSnapshotSelect();
 
   if (snapshotStore.length === 0) {
@@ -868,6 +918,7 @@ async function deleteSelectedSnapshot() {
     }
     clearComparisonOverlay();
     updatePixelProbePanel();
+    if (removedBlobUrl) URL.revokeObjectURL(removedBlobUrl);
     setStatus(`Deleted "${removed.indexLabel}". No saved indices remain.`, 4);
     return;
   }
@@ -877,8 +928,10 @@ async function deleteSelectedSnapshot() {
   if (snapshotSelect) snapshotSelect.value = next.id;
   try {
     await showSnapshotById(next.id);
+    if (removedBlobUrl) URL.revokeObjectURL(removedBlobUrl);
     setStatus(`Deleted "${removed.indexLabel}". Showing "${next.indexLabel}".`, 4);
   } catch (err) {
+    if (removedBlobUrl) URL.revokeObjectURL(removedBlobUrl);
     setStatus(`Deleted "${removed.indexLabel}", but could not load the next index: ${err.message}`, 4);
   }
 }
@@ -1081,47 +1134,35 @@ async function readImageBand(file) {
 }
 
 function renderAliasEditor() {
-  bandAliasList.innerHTML = "";
-  [...bandStore.keys()].forEach((rawName) => {
-    const wrapper = document.createElement("label");
-    wrapper.className = "alias-row";
+  // Legacy no-op: alias editor removed in simplified NDVI/NBR workflow.
+}
 
-    const source = document.createElement("small");
-    source.textContent = `Source: ${rawName}`;
-    wrapper.appendChild(source);
-
-    const input = document.createElement("input");
-    input.type = "text";
-    input.value = aliasStore.get(rawName) || "";
-    input.dataset.rawName = rawName;
-    input.placeholder = "Alias (e.g., NIR)";
-    input.addEventListener("change", () => {
-      const proposed = input.value.trim();
-      if (!isValidAlias(proposed)) {
-        input.value = aliasStore.get(rawName) || "";
-        setStatus("Alias cannot be empty.", 2);
+function canvasToPngObjectUrl(canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error("Failed to encode overlay image."));
         return;
       }
-      const normalized = ensureUniqueAlias(proposed, rawName);
-      if (normalized !== proposed) {
-        input.value = normalized;
-        setStatus(`Alias "${proposed}" was already in use. Renamed to "${normalized}".`, 2);
-      }
-      aliasStore.set(rawName, normalized);
-      aliasConfirmedStore.add(rawName);
-      reviewBandsAccepted = false;
-      setStatus("Alias updated. Press OK when done.", 2);
-      renderFormulaHint();
-      updateWorkflowProgress();
-    });
-    wrapper.appendChild(input);
-    bandAliasList.appendChild(wrapper);
+      resolve(URL.createObjectURL(blob));
+    }, "image/png");
   });
 }
 
+function getOverlayRenderSize(srcWidth, srcHeight) {
+  if (!(srcWidth > 0) || !(srcHeight > 0)) {
+    return { width: 1, height: 1 };
+  }
+  const edgeScale = Math.min(OVERLAY_MAX_EDGE / srcWidth, OVERLAY_MAX_EDGE / srcHeight, 1);
+  const pixelScale = Math.min(1, Math.sqrt(OVERLAY_MAX_PIXELS / (srcWidth * srcHeight)));
+  const scale = Math.min(edgeScale, pixelScale);
+  const width = Math.max(1, Math.round(srcWidth * scale));
+  const height = Math.max(1, Math.round(srcHeight * scale));
+  return { width, height };
+}
+
 function renderFormulaHint() {
-  if (!formulaHint) return;
-  formulaHint.textContent = "";
+  updateStep3ModeUi();
 }
 
 function renderPreview() {
@@ -1158,262 +1199,367 @@ function colorizeNormalized(t) {
   return [38, 128, 66];
 }
 
-function compileRasterFormula(rawFormula) {
-  const normalized = rawFormula.replace(/\^/g, "**");
-  if (!/^[^`;$\\]+$/.test(rawFormula)) {
-    throw new Error("Formula contains unsupported characters.");
-  }
-
-  const refs = new Map();
-  const aliasRefs = new Map();
-  const helperNames = Object.keys(rasterFns);
-  const constNames = Object.keys(rasterConsts);
-  const reserved = new Set([...helperNames, ...constNames]);
-  let refIndex = 0;
-  let transformed = normalized.replace(/\[([^\]]+)\]/g, (_, label) => {
-    const bandName = label.trim();
-    if (!bandStore.has(bandName)) {
-      throw new Error(`Unknown band "${bandName}". Use names shown in the band list.`);
-    }
-    if (!refs.has(bandName)) {
-      refs.set(bandName, `B${refIndex}`);
-      refIndex += 1;
-    }
-    return refs.get(bandName);
-  });
-
-  transformed = transformed.replace(/\{([^}]+)\}/g, (_, label) => {
-    const aliasName = label.trim();
-    const rawMatch = [...aliasStore.entries()].find(([, alias]) => alias === aliasName);
-    if (!rawMatch) {
-      throw new Error(`Unknown alias "${aliasName}". Check the alias list.`);
-    }
-    if (!aliasRefs.has(aliasName)) {
-      aliasRefs.set(aliasName, `A${aliasRefs.size}`);
-    }
-    return aliasRefs.get(aliasName);
-  });
-
-  // Also support alias usage without curly braces for identifier-like aliases (e.g., B4, NIR).
-  const aliasCandidates = [...aliasStore.values()]
-    .filter((alias) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(alias) && !reserved.has(alias))
-    .sort((a, b) => b.length - a.length);
-  aliasCandidates.forEach((aliasName) => {
-    if (!aliasRefs.has(aliasName)) {
-      aliasRefs.set(aliasName, `A${aliasRefs.size}`);
-    }
-    const symbol = aliasRefs.get(aliasName);
-    const pattern = new RegExp(`\\b${aliasName}\\b`, "g");
-    transformed = transformed.replace(pattern, symbol);
-  });
-
-  if (transformed.includes("[") || transformed.includes("]")) {
-    throw new Error("Malformed band reference. Use [exact band name].");
-  }
-  if (transformed.includes("{") || transformed.includes("}")) {
-    throw new Error("Malformed alias reference. Use {exact alias text}.");
-  }
-
-  const bandRefs = [...refs.entries()].map(([name, symbol]) => ({ name, symbol }));
-  const bandSymbols = bandRefs.map((entry) => entry.symbol);
-  const aliasRefsList = [...aliasRefs.entries()].map(([name, symbol]) => ({ name, symbol }));
-  const aliasSymbols = aliasRefsList.map((entry) => entry.symbol);
-  const aliasToRaw = new Map([...aliasStore.entries()].map(([raw, alias]) => [alias, raw]));
-  const allowed = new Set([...bandSymbols, ...aliasSymbols, ...helperNames, ...constNames]);
-  const identifiers = transformed.match(/[A-Za-z_][A-Za-z0-9_]*/g) || [];
-
-  for (const id of identifiers) {
-    if (!allowed.has(id)) {
-      throw new Error(`Unknown token "${id}". Use alias names (no braces needed), [band name], and supported helpers.`);
-    }
-  }
-
-  const evaluator = new Function(
-    ...aliasSymbols,
-    ...bandSymbols,
-    ...helperNames,
-    ...constNames,
-    `"use strict"; return (${transformed});`
-  );
-
-  return {
-    aliasRefs: aliasRefsList,
-    aliasToRaw,
-    bandRefs,
-    helperNames,
-    constNames,
-    evaluator
-  };
+function colorizeCustomContrast(t) {
+  const x = Math.pow(Math.max(0, Math.min(1, t)), 0.85);
+  if (x < 0.2) return [12, 56, 120];
+  if (x < 0.4) return [56, 132, 201];
+  if (x < 0.6) return [242, 229, 171];
+  if (x < 0.8) return [104, 174, 92];
+  return [22, 107, 58];
 }
 
-function computeIndex() {
-  const label = indexLabel.value.trim() || "Custom Index";
-  const formula = formulaInput.value.trim();
-  if (!formula) {
-    setStatus("Enter a raster algebra formula.", 3);
+function interpolateStops(stops, value) {
+  const low = stops[0][0];
+  const high = stops[stops.length - 1][0];
+  const x = Math.max(low, Math.min(high, value));
+  for (let i = 1; i < stops.length; i += 1) {
+    const [x1, c1] = stops[i];
+    const [x0, c0] = stops[i - 1];
+    if (x <= x1) {
+      const span = x1 - x0 || 1;
+      const t = (x - x0) / span;
+      return [
+        Math.round(c0[0] + (c1[0] - c0[0]) * t),
+        Math.round(c0[1] + (c1[1] - c0[1]) * t),
+        Math.round(c0[2] + (c1[2] - c0[2]) * t)
+      ];
+    }
+  }
+  return stops[stops.length - 1][1];
+}
+
+function colorizeNdviRamp(value, rampId) {
+  if (rampId === "ndvi-contrast") {
+    const stops = [
+      [-1.0, [8, 36, 85]],
+      [-0.2, [56, 118, 178]],
+      [0.0, [170, 158, 128]],
+      [0.2, [206, 221, 138]],
+      [0.4, [129, 189, 92]],
+      [0.6, [57, 152, 70]],
+      [0.8, [12, 108, 49]],
+      [1.0, [2, 72, 30]]
+    ];
+    return interpolateStops(stops, value);
+  }
+  const stops = [
+    [-1.0, [20, 58, 110]],
+    [-0.2, [72, 136, 188]],
+    [0.0, [186, 174, 141]],
+    [0.2, [196, 215, 134]],
+    [0.4, [128, 186, 103]],
+    [0.6, [64, 151, 84]],
+    [0.8, [24, 112, 62]],
+    [1.0, [8, 74, 40]]
+  ];
+  return interpolateStops(stops, value);
+}
+
+function colorizeNbrRamp(value, rampId) {
+  if (rampId === "nbr-diverging") {
+    const stops = [
+      [-1.0, [33, 88, 156]],
+      [-0.4, [113, 164, 216]],
+      [0.0, [241, 241, 241]],
+      [0.4, [241, 150, 97]],
+      [1.0, [165, 0, 38]]
+    ];
+    return interpolateStops(stops, value);
+  }
+  const stops = [
+    [-1.0, [25, 92, 162]],
+    [-0.2, [70, 151, 110]],
+    [0.0, [218, 205, 170]],
+    [0.2, [242, 176, 109]],
+    [0.45, [224, 102, 64]],
+    [0.7, [171, 39, 44]],
+    [1.0, [94, 0, 20]]
+  ];
+  return interpolateStops(stops, value);
+}
+
+function computeHistogramPercentile(values, minValue, maxValue, percentile, bins = 1024) {
+  const p = Math.max(0, Math.min(1, percentile));
+  const span = maxValue - minValue;
+  if (!(span > 0)) return minValue;
+
+  const histogram = new Uint32Array(bins);
+  let count = 0;
+  for (let i = 0; i < values.length; i += 1) {
+    const numeric = Number(values[i]);
+    if (!Number.isFinite(numeric)) continue;
+    const clamped = Math.max(minValue, Math.min(maxValue, numeric));
+    let idx = Math.floor(((clamped - minValue) / span) * (bins - 1));
+    if (idx < 0) idx = 0;
+    if (idx >= bins) idx = bins - 1;
+    histogram[idx] += 1;
+    count += 1;
+  }
+  if (count === 0) return minValue;
+
+  const target = Math.max(1, Math.ceil(count * p));
+  let cumulative = 0;
+  for (let i = 0; i < bins; i += 1) {
+    cumulative += histogram[i];
+    if (cumulative >= target) {
+      return minValue + (i / (bins - 1)) * span;
+    }
+  }
+  return maxValue;
+}
+
+function getPresetStretch(values) {
+  let p2 = computeHistogramPercentile(values, -1, 1, 0.02, 1024);
+  let p98 = computeHistogramPercentile(values, -1, 1, 0.98, 1024);
+  if (p98 <= p2) {
+    p2 = -0.2;
+    p98 = 0.8;
+  }
+  return { min: p2, max: p98 };
+}
+
+function getColorForValue(value, renderer) {
+  if (renderer.type === "ndvi") {
+    const clipped = Math.max(-1, Math.min(1, value));
+    const t = (clipped - renderer.stretchMin) / renderer.stretchSpan;
+    const contrastT = Math.pow(Math.max(0, Math.min(1, t)), 0.9);
+    const adjusted = renderer.stretchMin + contrastT * renderer.stretchSpan;
+    return colorizeNdviRamp(adjusted, renderer.rampId);
+  }
+  if (renderer.type === "nbr") {
+    const clipped = Math.max(-1, Math.min(1, value));
+    const t = (clipped - renderer.stretchMin) / renderer.stretchSpan;
+    const contrastT = Math.pow(Math.max(0, Math.min(1, t)), 0.9);
+    const adjusted = renderer.stretchMin + contrastT * renderer.stretchSpan;
+    return colorizeNbrRamp(adjusted, renderer.rampId);
+  }
+  const t = (value - renderer.min) / renderer.span;
+  return colorizeCustomContrast(t);
+}
+
+async function computeIndex() {
+  if (computeBtn) computeBtn.disabled = true;
+  if (!step1Confirmed) {
+    setStatus("Press OK in Step 1 before calculating.", 3);
     updateWorkflowProgress();
+    if (computeBtn) computeBtn.disabled = false;
+    return;
+  }
+  const indexType = getCurrentIndexType();
+  const rampId = rampSelect ? rampSelect.value : indexType === "nbr" ? "nbr-burn" : "ndvi-classic";
+  const secondRole = getSecondaryRoleKey(indexType);
+  const formula = getIndexFormulaText(indexType);
+  const label = indexLabel.value.trim() || indexType.toUpperCase();
+
+  const nirBand = bandStore.get("NIR");
+  const secondBand = bandStore.get(secondRole);
+  if (!nirBand || !secondBand) {
+    setStatus(`Upload required ${indexType.toUpperCase()} bands in Step 2 first.`, 3);
+    updateWorkflowProgress();
+    if (computeBtn) computeBtn.disabled = false;
     return;
   }
 
-  if (bandStore.size === 0) {
-    setStatus("Upload at least one band first.", 3);
-    updateWorkflowProgress();
-    return;
-  }
-
-  let compiled;
-  try {
-    compiled = compileRasterFormula(formula);
-  } catch (err) {
-    setStatus(err.message, 3);
-    updateWorkflowProgress();
-    return;
-  }
-
-  const { aliasRefs, aliasToRaw, bandRefs, helperNames, constNames, evaluator } = compiled;
-  const aliasArrays = aliasRefs.map((entry) => bandStore.get(aliasToRaw.get(entry.name)).values);
-  const bandArrays = bandRefs.map((entry) => bandStore.get(entry.name).values);
-  const helperFns = helperNames.map((name) => rasterFns[name]);
-  const constValues = constNames.map((name) => rasterConsts[name]);
+  const nirValues = nirBand.values;
+  const secondValues = secondBand.values;
   const out = new Float32Array(workingWidth * workingHeight);
   let min = Infinity;
   let max = -Infinity;
-  const evalArgs = new Array(aliasArrays.length + bandArrays.length + helperFns.length + constValues.length);
 
   for (let i = 0; i < out.length; i += 1) {
-    let argIdx = 0;
-    for (let j = 0; j < aliasArrays.length; j += 1) {
-      evalArgs[argIdx] = aliasArrays[j][i];
-      argIdx += 1;
-    }
-    for (let j = 0; j < bandArrays.length; j += 1) {
-      evalArgs[argIdx] = bandArrays[j][i];
-      argIdx += 1;
-    }
-    for (let j = 0; j < helperFns.length; j += 1) {
-      evalArgs[argIdx] = helperFns[j];
-      argIdx += 1;
-    }
-    for (let j = 0; j < constValues.length; j += 1) {
-      evalArgs[argIdx] = constValues[j];
-      argIdx += 1;
-    }
-    let value = 0;
-    try {
-      value = evaluator(...evalArgs);
-    } catch (err) {
-      setStatus(`Formula evaluation failed near pixel ${i}: ${err.message}`, 3);
-      updateWorkflowProgress();
-      return;
-    }
+    const numerator = nirValues[i] - secondValues[i];
+    const denominator = nirValues[i] + secondValues[i];
+    const value = Math.abs(denominator) < 1e-10 ? 0 : numerator / denominator;
     const safeValue = Number.isFinite(value) ? value : 0;
     out[i] = safeValue;
     if (safeValue < min) min = safeValue;
     if (safeValue > max) max = safeValue;
   }
 
-  indexCanvas.width = workingWidth;
-  indexCanvas.height = workingHeight;
-  const img = indexCtx.createImageData(workingWidth, workingHeight);
+  const overlaySize = getOverlayRenderSize(workingWidth, workingHeight);
+  indexCanvas.width = overlaySize.width;
+  indexCanvas.height = overlaySize.height;
+  const img = indexCtx.createImageData(overlaySize.width, overlaySize.height);
   const span = max - min || 1;
-  for (let i = 0, p = 0; i < out.length; i += 1, p += 4) {
-    const t = (out[i] - min) / span;
-    const [r, g, bColor] = colorizeNormalized(t);
-    img.data[p] = r;
-    img.data[p + 1] = g;
-    img.data[p + 2] = bColor;
-    img.data[p + 3] = 255;
+  const renderer = {
+    type: indexType,
+    rampId,
+    min,
+    span
+  };
+  if (indexType === "ndvi" || indexType === "nbr") {
+    const stretch = getPresetStretch(out);
+    renderer.stretchMin = stretch.min;
+    renderer.stretchSpan = Math.max(1e-6, stretch.max - stretch.min);
+  }
+
+  for (let y = 0; y < overlaySize.height; y += 1) {
+    const srcY = Math.floor((y / overlaySize.height) * workingHeight);
+    for (let x = 0; x < overlaySize.width; x += 1) {
+      const srcX = Math.floor((x / overlaySize.width) * workingWidth);
+      const srcIdx = Math.min(out.length - 1, srcY * workingWidth + srcX);
+      const [r, g, bColor] = getColorForValue(out[srcIdx], renderer);
+      const p = (y * overlaySize.width + x) * 4;
+      img.data[p] = r;
+      img.data[p + 1] = g;
+      img.data[p + 2] = bColor;
+      img.data[p + 3] = 255;
+    }
   }
   indexCtx.putImageData(img, 0, 0);
-  const imageUrl = indexCanvas.toDataURL("image/png");
+  let imageUrl = "";
+  try {
+    imageUrl = await canvasToPngObjectUrl(indexCanvas);
+  } catch (err) {
+    setStatus(`Could not render overlay image: ${err.message}`, 3);
+    updateWorkflowProgress();
+    if (computeBtn) computeBtn.disabled = false;
+    return;
+  }
   const snapshotId = saveSnapshot(imageUrl, out, label, formula, min, max);
   newIndexCyclePending = false;
   updateMapOverlay(imageUrl, workingGeoBounds);
   showComparisonForSnapshot(snapshotId);
   setStatus(
-    `${label} computed on ${workingWidth} x ${workingHeight} using "${formula}". Range: ${min.toFixed(4)} to ${max.toFixed(4)}. Saved to indices (${snapshotStore.length}).`
+    `${label} (${indexType.toUpperCase()}) computed on ${workingWidth} x ${workingHeight} using "${formula}". Range: ${min.toFixed(4)} to ${max.toFixed(4)}. Saved to indices (${snapshotStore.length}). Overlay preview: ${overlaySize.width} x ${overlaySize.height}.`
   , 3);
   updateWorkflowProgress();
+  if (computeBtn) computeBtn.disabled = false;
 }
 
-async function ingestFile(file) {
+async function readSingleBandFile(file, roleKey) {
   const lower = file.name.toLowerCase();
   const isTiff = lower.endsWith(".tif") || lower.endsWith(".tiff");
   if (isTiff) {
     const entries = await readGeoTiffBands(file);
-    entries.forEach((entry) => {
-      const rawName = uniqueBandName(entry.name);
-      bandStore.set(rawName, entry.payload);
-      setDefaultAlias(rawName);
-    });
-    return;
+    if (!entries || entries.length === 0) throw new Error(`No readable raster data in ${file.name}.`);
+    if (entries.length > 1) {
+      setStatus(`${roleKey}: ${file.name} has multiple bands; using Band 1.`, 2);
+    }
+    return entries[0].payload;
   }
-
-  const payload = await readImageBand(file);
-  const rawName = uniqueBandName(file.name);
-  bandStore.set(rawName, payload);
-  setDefaultAlias(rawName);
+  return readImageBand(file);
 }
 
-async function handleFiles(files) {
-  if (!files || files.length === 0) return;
-  setStatus("Reading uploaded files...", 1);
-
-  bandStore.clear();
-  aliasStore.clear();
-  aliasConfirmedStore.clear();
-  reviewBandsAccepted = false;
-  for (let i = 0; i < files.length; i += 1) {
-    try {
-      await ingestFile(files[i]);
-    } catch (err) {
-      console.error(err);
-      setStatus(`Error reading ${files[i].name}.`, 1);
+function alignRoleBandsForCompute() {
+  const secondRole = getSecondaryRoleKey();
+  const nir = bandStore.get("NIR");
+  const second = bandStore.get(secondRole);
+  if (!nir || !second) {
+    if (nir) {
+      workingWidth = nir.width;
+      workingHeight = nir.height;
+      workingGeoBounds = nir.geoBounds || null;
+    } else {
+      workingWidth = 0;
+      workingHeight = 0;
+      workingGeoBounds = null;
     }
+    return false;
   }
 
-  if (bandStore.size === 0) {
-    setStatus("No readable raster bands were found in the selected files.", 1);
-    renderAliasEditor();
-    renderFormulaHint();
-    updateWorkflowProgress();
+  const targetWidth = Math.min(nir.width, second.width);
+  const targetHeight = Math.min(nir.height, second.height);
+  workingWidth = targetWidth;
+  workingHeight = targetHeight;
+  workingGeoBounds = nir.geoBounds || second.geoBounds || null;
+
+  const alignedNir = resampleNearest(nir.values, nir.width, nir.height, targetWidth, targetHeight);
+  const alignedSecond = resampleNearest(second.values, second.width, second.height, targetWidth, targetHeight);
+  bandStore.set("NIR", {
+    values: alignedNir,
+    width: targetWidth,
+    height: targetHeight,
+    geoBounds: nir.geoBounds || second.geoBounds || null
+  });
+  bandStore.set(secondRole, {
+    values: alignedSecond,
+    width: targetWidth,
+    height: targetHeight,
+    geoBounds: second.geoBounds || nir.geoBounds || null
+  });
+  return true;
+}
+
+function updateBandUploadStatus() {
+  const secondRole = getSecondaryRoleKey();
+  const hasNir = bandStore.has("NIR");
+  const hasSecond = bandStore.has(secondRole);
+  if (hasNir && hasSecond) {
+    const n = bandStore.get("NIR");
+    setStatus(`Ready: NIR + ${secondRole} loaded (${n.width} x ${n.height}).`, 2);
     return;
   }
+  if (!hasNir && !hasSecond) {
+    setStatus("Waiting for required band uploads.", 2);
+    return;
+  }
+  if (!hasNir) {
+    setStatus("Upload the NIR band to continue.", 2);
+    return;
+  }
+  setStatus(`Upload the ${secondRole} band to continue.`, 2);
+}
 
-  const dims = [...bandStore.values()].map((b) => ({ w: b.width, h: b.height }));
-  workingWidth = Math.min(...dims.map((d) => d.w));
-  workingHeight = Math.min(...dims.map((d) => d.h));
-  workingGeoBounds = [...bandStore.values()].find((b) => b.geoBounds)?.geoBounds || null;
-
-  bandStore.forEach((payload, key) => {
-    const resampled = resampleNearest(payload.values, payload.width, payload.height, workingWidth, workingHeight);
-    bandStore.set(key, {
-      values: resampled,
-      width: workingWidth,
-      height: workingHeight,
-      geoBounds: payload.geoBounds || null
-    });
-  });
-
-  renderAliasEditor();
-  renderFormulaHint();
-  renderPreview();
-  indexCtx.clearRect(0, 0, indexCanvas.width, indexCanvas.height);
-  setStatus(`Loaded ${bandStore.size} bands. Continue to Step 2 to set aliases.`, 1);
-  updateWorkflowProgress();
+async function handleRoleBandUpload(file, roleKey) {
+  if (!file) return;
+  try {
+    const payload = await readSingleBandFile(file, roleKey);
+    bandStore.set(roleKey, payload);
+    alignRoleBandsForCompute();
+    renderPreview();
+    indexCtx.clearRect(0, 0, indexCanvas.width, indexCanvas.height);
+    newIndexCyclePending = true;
+    updateBandUploadStatus();
+    updateWorkflowProgress();
+  } catch (err) {
+    console.error(err);
+    setStatus(`Could not read ${roleKey} band: ${err.message}`, 2);
+  }
 }
 
 initMap();
 setOverlayOpacityFromInput();
 setCompareBlendFromInput();
+updateStep3ModeUi();
 updateBlendControlVisibility();
 updateClearVectorButtonVisibility();
+updateBandUploadStatus();
 
 if (overlayOpacityInput) {
   overlayOpacityInput.addEventListener("change", setOverlayOpacityFromInput);
 }
-if (reviewBandsOkBtn) {
-  reviewBandsOkBtn.addEventListener("click", confirmReviewBands);
+if (indexTypeSelect) {
+  indexTypeSelect.addEventListener("change", () => {
+    const nextSecondaryRole = getSecondaryRoleKey();
+    if (nextSecondaryRole === "RED") {
+      bandStore.delete("SWIR2");
+    } else {
+      bandStore.delete("RED");
+    }
+    if (secondaryBandFileInput) secondaryBandFileInput.value = "";
+    alignRoleBandsForCompute();
+    updateStep3ModeUi();
+    step1Confirmed = false;
+    setStatus(`Selected ${getCurrentIndexType().toUpperCase()}. Press OK in Step 1.`, 1);
+    updateBandUploadStatus();
+    updateWorkflowProgress();
+  });
+}
+if (step1OkBtn) {
+  step1OkBtn.addEventListener("click", confirmStep1Selection);
+}
+if (nirBandFileInput) {
+  nirBandFileInput.addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0] ? e.target.files[0] : null;
+    handleRoleBandUpload(file, "NIR");
+  });
+}
+if (secondaryBandFileInput) {
+  secondaryBandFileInput.addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0] ? e.target.files[0] : null;
+    handleRoleBandUpload(file, getSecondaryRoleKey());
+  });
 }
 if (compareBlendInput) {
   compareBlendInput.addEventListener("input", setCompareBlendFromInput);
@@ -1467,10 +1613,18 @@ if (clearVectorBtn) {
   });
 }
 
-fileInput.addEventListener("change", (e) => {
-  const files = e.target.files;
-  handleFiles(files);
+window.addEventListener("beforeunload", () => {
+  snapshotStore.forEach((snap) => {
+    if (snap && typeof snap.imageUrl === "string" && snap.imageUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(snap.imageUrl);
+    }
+  });
 });
 
-computeBtn.addEventListener("click", computeIndex);
+computeBtn.addEventListener("click", () => {
+  computeIndex().catch((err) => {
+    setStatus(`Index computation failed: ${err.message}`, 3);
+    if (computeBtn) computeBtn.disabled = false;
+  });
+});
 updateWorkflowProgress();

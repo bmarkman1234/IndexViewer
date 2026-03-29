@@ -31,7 +31,7 @@
       </a>
       <h1>IndexViewer</h1>
       <p>
-        A lightweight web app for calculating and visualizing indices from airborne and spaceborne imagery
+        A lightweight NDVI/NBR viewer for quick band-based index mapping, comparison, and pixel sampling
       </p>
     </header>
     <main class="viewer-layout">
@@ -51,29 +51,35 @@
             <div class="step-head">
               <div>
             <p class="step-kicker">Step 1</p>
-            <h3>Upload Bands</h3>
+            <h3>Select Index</h3>
               </div>
               <span id="step1State" class="step-state pending">Pending</span>
             </div>
-            <p class="small">
-              Upload one or more raster bands (`.tif/.tiff/.png/.jpg`).
-            </p>
-            <input id="bandFiles" type="file" multiple accept=".tif,.tiff,.png,.jpg,.jpeg" />
-            <p id="statusStep1" class="status">Waiting for files...</p>
+            <label for="indexTypeSelect">Index type</label>
+            <select id="indexTypeSelect">
+              <option value="ndvi" selected>NDVI</option>
+              <option value="nbr">NBR</option>
+            </select>
+            <label for="indexLabel">Index name</label>
+            <input id="indexLabel" type="text" placeholder="Optional (defaults to NDVI/NBR)" />
+            <button id="step1OkBtn" type="button" class="secondary-btn">OK</button>
+            <p id="statusStep1" class="status">Choose NDVI or NBR.</p>
           </div>
 
           <div id="step2" class="workflow-step">
             <div class="step-head">
               <div>
             <p class="step-kicker">Step 2</p>
-            <h3>Review Bands</h3>
+            <h3>Upload Required Bands</h3>
               </div>
               <span id="step2State" class="step-state pending">Pending</span>
             </div>
-            <p class="small">Assign aliases to each band in this step.</p>
-            <div id="bandAliasList" class="alias-list"></div>
-            <button id="reviewBandsOkBtn" type="button" class="secondary-btn">OK</button>
-            <p id="statusStep2" class="status">No updates yet.</p>
+            <p id="bandUploadHint" class="small">Upload one file for each required role.</p>
+            <label for="nirBandFile">NIR Band</label>
+            <input id="nirBandFile" type="file" accept=".tif,.tiff,.png,.jpg,.jpeg" />
+            <label id="secondaryBandLabel" for="secondaryBandFile">Red Band</label>
+            <input id="secondaryBandFile" type="file" accept=".tif,.tiff,.png,.jpg,.jpeg" />
+            <p id="statusStep2" class="status">Waiting for required band uploads.</p>
           </div>
 
           <div id="step3" class="workflow-step">
@@ -84,16 +90,9 @@
               </div>
               <span id="step3State" class="step-state pending">Pending</span>
             </div>
-            <label for="indexLabel">Index name</label>
-            <input id="indexLabel" type="text"/>
-
-            <label for="formulaInput">Index Formula</label>
-            <input id="formulaInput" type="text" />
+            <label for="rampSelect">Color ramp</label>
+            <select id="rampSelect"></select>
             <p id="formulaHint" class="small"></p>
-            <p class="small">
-              Need index ideas? Browse formulas at
-              <a href="https://www.indexdatabase.de/" target="_blank" rel="noopener noreferrer">IndexDatabase</a>.
-            </p>
             <button id="computeBtn" type="button">Calculate Index And Show On Map</button>
             <p id="statusStep3" class="status">No index calculated yet.</p>
           </div>

@@ -254,6 +254,10 @@ input {
   width: 100%;
 }
 
+.hidden {
+  display: none !important;
+}
+
 select,
 button,
 input[type="file"] {
@@ -315,6 +319,10 @@ button:hover {
   margin-top: 0.5rem;
   display: grid;
   gap: 0.45rem;
+}
+
+.preset-band-group {
+  margin-top: 0.35rem;
 }
 
 .alias-row {
