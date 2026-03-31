@@ -2,10 +2,25 @@
 
 A lightweight tool for assessing regional change over time in vegetation health and fire damage. https://bmarkman1234.github.io/IndexViewer/
 
+![JavaScript](https://img.shields.io/badge/JavaScript-ES6-F7DF1E?logo=javascript&logoColor=black)
+![HTML5](https://img.shields.io/badge/HTML5-Markup-E34F26?logo=html5&logoColor=white)
+![CSS3](https://img.shields.io/badge/CSS3-Styling-1572B6?logo=css3&logoColor=white)
+![Leaflet](https://img.shields.io/badge/Leaflet-1.9.4-199900?logo=leaflet&logoColor=white)
+![GeoTIFF.js](https://img.shields.io/badge/GeoTIFF.js-2.1.3-333333)
+![Proj4js](https://img.shields.io/badge/Proj4js-2.11.0-333333)
+![JSZip](https://img.shields.io/badge/JSZip-3.10.1-333333)
+![toGeoJSON](https://img.shields.io/badge/toGeoJSON-5.8.1-333333)
+![shpjs](https://img.shields.io/badge/shpjs-4.0.4-333333)
+![OpenStreetMap](https://img.shields.io/badge/Basemap-OpenStreetMap-7EBC6F?logo=openstreetmap&logoColor=white)
+
+## App Screenshot
+
+![IndexViewer example screenshot](./Index_Viewer_Example.png)
+
 ## Free Satellite Data Sources
 
-- [USGS EarthExplorer](https://earthexplorer.usgs.gov/)
-- [Copernicus Data Space Ecosystem](https://dataspace.copernicus.eu/)
+[![USGS EarthExplorer](https://img.shields.io/badge/USGS-EarthExplorer-005EA2)](https://earthexplorer.usgs.gov/)
+[![Copernicus Data Space](https://img.shields.io/badge/Copernicus-Data%20Space%20Ecosystem-1F4E8C)](https://dataspace.copernicus.eu/)
 
 ## Workflow Steps
 
