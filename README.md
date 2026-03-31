@@ -1,6 +1,6 @@
 # IndexViewer
 
-A lightweight tool for assessing regional change over time in vegetation health and fire damage. https://bmarkman1234.github.io/IndexViewer/
+A lightweight tool for assessing regional change over time in vegetation health and fire damage 🛰️🌿. https://bmarkman1234.github.io/IndexViewer/
 
 ![JavaScript](https://img.shields.io/badge/JavaScript-ES6-F7DF1E?logo=javascript&logoColor=black)
 ![HTML5](https://img.shields.io/badge/HTML5-Markup-E34F26?logo=html5&logoColor=white)
